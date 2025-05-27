@@ -71,8 +71,15 @@ module BlueHydra
 
         # inject a timestamp onto the message parsed out of the first line of
         # btmon output
-        ts = Time.parse(current_msg.first.strip.scan(/\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}.\d*$/)[0]).to_i
-        current_msg << "last_seen: #{ts}"
+        timestamp_match = current_msg.first.strip.scan(/\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}.\d*$/)[0]
+        if timestamp_match
+          ts = Time.parse(timestamp_match).to_i
+          current_msg << "last_seen: #{ts}"
+        else
+          # Fallback to current time if no timestamp found in btmon output
+          BlueHydra.logger.warn("No timestamp found in btmon output, using current time")
+          current_msg << "last_seen: #{Time.now.to_i}"
+        end
 
         # add the current message to the working set
         working_set << current_msg

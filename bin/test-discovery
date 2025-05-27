@@ -6,15 +6,29 @@ from optparse import OptionParser, make_option
 import dbus
 import dbus.mainloop.glib
 import sys
-# gentoo
-sys.path.append('/usr/lib64/bluez/test')
-# gentoo - arm
-sys.path.append('/usr/lib/bluez/test')
-# kali2
-sys.path.append('/usr/share/doc/bluez-test-scripts/examples')
-# ubuntu
-sys.path.append('/usr/share/doc/bluez-tests/examples')
-import bluezutils
+import os
+
+# Add current directory to path for local bluezutils
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+
+# Try to import bluezutils from various locations
+try:
+    import bluezutils
+except ImportError:
+    # Try system locations
+    for path in ['/usr/lib64/bluez/test', '/usr/lib/bluez/test', 
+                 '/usr/share/doc/bluez-test-scripts/examples',
+                 '/usr/share/doc/bluez-tests/examples']:
+        if os.path.exists(path):
+            sys.path.append(path)
+            try:
+                import bluezutils
+                break
+            except ImportError:
+                continue
+    else:
+        print("Error: bluezutils not found. Please ensure BlueZ test utilities are installed.")
+        sys.exit(1)
 import time
 
 
@@ -24,26 +38,37 @@ def property_changed(name, value):
 
 
 if __name__ == '__main__':
-	dbus.mainloop.glib.DBusGMainLoop(set_as_default=True)
+	try:
+		dbus.mainloop.glib.DBusGMainLoop(set_as_default=True)
 
-	bus = dbus.SystemBus()
+		bus = dbus.SystemBus()
 
-	option_list = [
-			make_option("-i", "--device", action="store",
-					type="string", dest="dev_id"),
-			make_option("-t", "--timeout", action="store",
-					type="int", dest="timeout"),
-			]
-	parser = OptionParser(option_list=option_list)
+		option_list = [
+				make_option("-i", "--device", action="store",
+						type="string", dest="dev_id"),
+				make_option("-t", "--timeout", action="store",
+						type="int", dest="timeout"),
+				]
+		parser = OptionParser(option_list=option_list)
 
-	(options, args) = parser.parse_args()
+		(options, args) = parser.parse_args()
 
-	adapter = bluezutils.find_adapter(options.dev_id)
+		adapter = bluezutils.find_adapter(options.dev_id)
 
-	bus.add_signal_receiver(property_changed,
-					dbus_interface = "org.bluez.Adapter1",
-					signal_name = "PropertyChanged")
+		bus.add_signal_receiver(property_changed,
+						dbus_interface = "org.bluez.Adapter1",
+						signal_name = "PropertyChanged")
 
-	adapter.StartDiscovery()
-	time.sleep(options.timeout)
-	adapter.StopDiscovery()
+		adapter.StartDiscovery()
+		time.sleep(options.timeout)
+		adapter.StopDiscovery()
+		
+	except dbus.exceptions.DBusException as e:
+		print(f"D-Bus error during discovery: {e}", file=sys.stderr)
+		sys.exit(1)
+	except RuntimeError as e:
+		print(f"Discovery error: {e}", file=sys.stderr)
+		sys.exit(1)
+	except Exception as e:
+		print(f"Unexpected error during discovery: {e}", file=sys.stderr)
+		sys.exit(1)

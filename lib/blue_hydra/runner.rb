@@ -42,7 +42,7 @@ module BlueHydra
       end
     else
       # Why is --columns here? Because Bluez 5.72 crashes without it
-      @@command = "btmon --columns 170 -T -i #{BlueHydra.config["bt_device"]}"
+      @@command = "btmon -T -i #{BlueHydra.config["bt_device"]}"
     end
     if ! ::File.executable?(`command -v #{@@command.split[0]} 2> /dev/null`.chomp)
       BlueHydra.logger.fatal("Failed to find: '#{@@command.split[0]}' which is needed for the current setting...")
@@ -127,7 +127,15 @@ module BlueHydra
         # another thread which operates the actual device discovery, not needed
         # if reading from a file since btmon will just be getting replayed
         unless ENV["BLUE_HYDRA"] == "test"
-          start_discovery_thread unless BlueHydra.config["file"]
+          # Check if D-Bus is available before starting discovery thread
+          if BlueHydra.config["file"]
+            # File mode - no discovery needed
+          elsif File.exist?("/run/dbus/system_bus_socket")
+            start_discovery_thread
+          else
+            BlueHydra.logger.warn("D-Bus system bus not available - discovery thread disabled")
+            BlueHydra.logger.info("Running in passive-only mode - btmon data collection will continue")
+          end
         end
 
         # start the thread responsible for printing the CUI to screen unless
@@ -217,14 +225,14 @@ module BlueHydra
                 end
               else
                 self.scanner_status[:ubertooth] = "ubertooth-util missing"
-                Blue_Hydra.logger.info("Unable to use ubertooth without ubertooth-util installed")
+                BlueHydra.logger.info("Unable to use ubertooth without ubertooth-util installed")
               end
             else
               self.scanner_status[:ubertooth] = "No hardware detected"
             end
           else
             self.scanner_status[:ubertooth] = "Please install lsusb"
-            Blue_hydra.logger.info("Unable to detect ubertooth without lsusb installed")
+            BlueHydra.logger.info("Unable to detect ubertooth without lsusb installed")
           end
         end
 
@@ -247,30 +255,30 @@ module BlueHydra
     # is alive or to exit gracefully
     def status
       x = {
-        raw_queue:         self.raw_queue.length,
-        chunk_queue:       self.chunk_queue.length,
-        result_queue:      self.result_queue.length,
-        info_scan_queue:   self.info_scan_queue.length,
-        l2ping_queue:      self.l2ping_queue.length,
-        btmon_thread:      self.btmon_thread.status,
-        chunker_thread:    self.chunker_thread.status,
-        parser_thread:     self.parser_thread.status,
-        result_thread:     self.result_thread.status,
+        raw_queue:         self.raw_queue ? self.raw_queue.length : 0,
+        chunk_queue:       self.chunk_queue ? self.chunk_queue.length : 0,
+        result_queue:      self.result_queue ? self.result_queue.length : 0,
+        info_scan_queue:   self.info_scan_queue ? self.info_scan_queue.length : 0,
+        l2ping_queue:      self.l2ping_queue ? self.l2ping_queue.length : 0,
+        btmon_thread:      self.btmon_thread ? self.btmon_thread.status : nil,
+        chunker_thread:    self.chunker_thread ? self.chunker_thread.status : nil,
+        parser_thread:     self.parser_thread ? self.parser_thread.status : nil,
+        result_thread:     self.result_thread ? self.result_thread.status : nil,
         stopping:          @stopping
       }
 
       unless BlueHydra.config["file"]
-        x[:discovery_thread] = self.discovery_thread.status
-        x[:ubertooth_thread] = self.ubertooth_thread.status if self.ubertooth_thread
+        x[:discovery_thread] = self.discovery_thread ? self.discovery_thread.status : nil
+        x[:ubertooth_thread] = self.ubertooth_thread ? self.ubertooth_thread.status : nil
       end
 
       if BlueHydra.signal_spitter
-        x[:signal_spitter_thread] = self.signal_spitter_thread.status
-        x[:empty_spittoon_thread] = self.empty_spittoon_thread.status
+        x[:signal_spitter_thread] = self.signal_spitter_thread ? self.signal_spitter_thread.status : nil
+        x[:empty_spittoon_thread] = self.empty_spittoon_thread ? self.empty_spittoon_thread.status : nil
       end
 
-      x[:cui_thread] = self.cui_thread.status unless BlueHydra.daemon_mode
-      x[:api_thread] = self.api_thread.status if BlueHydra.file_api
+      x[:cui_thread] = (self.cui_thread ? self.cui_thread.status : nil) unless BlueHydra.daemon_mode
+      x[:api_thread] = (self.api_thread ? self.api_thread.status : nil) if BlueHydra.file_api
 
       x
     end
@@ -288,9 +296,9 @@ module BlueHydra
       end
 
       stop_condition = Proc.new do
-        [nil, false].include?(result_thread.status) ||
-        [nil, false].include?(parser_thread.status) ||
-        self.result_queue.empty?
+        [nil, false].include?(result_thread ? result_thread.status : nil) ||
+        [nil, false].include?(parser_thread ? parser_thread.status : nil) ||
+        (self.result_queue ? self.result_queue.empty? : true)
       end
 
       # clear queue...
@@ -486,23 +494,20 @@ module BlueHydra
       end
       # Bluez 5.64 seems to have a bug in reset where the device shows powered but fails as not ready
       sleep 1
-      interface_powerup = BlueHydra::Command.execute3("printf \"select #{BlueHydra::LOCAL_ADAPTER_ADDRESS.split}\npower on\n\" | timeout 2 bluetoothctl")
-      if interface_powerup[:exit_code] == 124
-        if interface_powerup[:stdout] =~ /Waiting to connect to bluetoothd.../i
-          BlueHydra.logger.info("bluetoothctl unable to connect to bluetoothd")
-          bluetoothdDbusError(bluetoothd_errors)
-        else
-          BlueHydra.logger.warn("Timeout occurred while powering on bluetooth adapter #{BlueHydra.config["bt_device"]}")
-          interface_powerup[:stdout].split("\n").each do |ln|
+      
+      # Use hciconfig up instead of bluetoothctl to avoid D-Bus crashes
+      interface_powerup = BlueHydra::Command.execute3("hciconfig #{BlueHydra.config["bt_device"]} up")
+      if interface_powerup[:exit_code] != 0
+        if interface_powerup[:stderr] && interface_powerup[:stderr] =~ /Connection timed out|Operation not possible due to RF-kill/i
+          BlueHydra.logger.warn("Failed to power on bluetooth adapter #{BlueHydra.config["bt_device"]} - may need manual intervention")
+        elsif interface_powerup[:stderr]
+          BlueHydra.logger.error("Error powering on bluetooth adapter #{BlueHydra.config["bt_device"]}...")
+          interface_powerup[:stderr].split("\n").each do |ln|
             BlueHydra.logger.error(ln)
           end
         end
-      end
-      if interface_powerup[:stderr]
-        BlueHydra.logger.error("Error with bluetoothctl power on...")
-        interface_powerup[:stderr].split("\n").each do |ln|
-          BlueHydra.logger.error(ln)
-        end
+      else
+        BlueHydra.logger.debug("Bluetooth adapter #{BlueHydra.config["bt_device"]} powered on successfully")
       end
       sleep 1
     end
@@ -634,7 +639,12 @@ module BlueHydra
               if discovery_errors
                 if discovery_errors =~ /org.bluez.Error.NotReady/
                   raise BluezNotReadyError
-                elsif discovery_errors =~ /dbus.exceptions.DBusException/i
+                elsif discovery_errors =~ /D-Bus error.*FileNotFound.*system_bus_socket/i
+                  # D-Bus system bus not available - disable discovery for this session
+                  BlueHydra.logger.warn("D-Bus system bus not available - disabling discovery thread")
+                  BlueHydra.logger.info("Continuing in passive-only mode - btmon data collection active")
+                  break # Exit discovery loop, btmon will continue
+                elsif discovery_errors =~ /dbus.exceptions.DBusException/i || discovery_errors =~ /D-Bus error/i
                   # This happens when bluetoothd isn't running or otherwise broken off the dbus
                   # systemd
                   #  dbus.exceptions.DBusException: org.freedesktop.systemd1.NoSuchUnit: Unit dbus-org.bluez.service not found.

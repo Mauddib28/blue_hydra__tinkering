@@ -1,0 +1,49 @@
+#!/bin/bash
+
+# Simple discovery fallback script for environments without D-Bus
+# This provides basic Bluetooth discovery functionality using hciconfig
+
+TIMEOUT=30
+DEVICE="hci0"
+
+# Parse command line arguments
+while [[ $# -gt 0 ]]; do
+  case $1 in
+    -t|--timeout)
+      TIMEOUT="$2"
+      shift 2
+      ;;
+    -i|--device)
+      DEVICE="$2"
+      shift 2
+      ;;
+    *)
+      echo "Usage: $0 [-t timeout] [-i device]"
+      echo "  -t, --timeout    Discovery timeout in seconds (default: 30)"
+      echo "  -i, --device     Bluetooth device to use (default: hci0)"
+      exit 1
+      ;;
+  esac
+done
+
+echo "Starting fallback discovery on $DEVICE for ${TIMEOUT}s (no D-Bus mode)"
+
+# Power up the device
+hciconfig "$DEVICE" up 2>/dev/null
+
+# Enable page and inquiry scan mode
+hciconfig "$DEVICE" piscan 2>/dev/null
+
+# Start inquiry scan - this generates discoverable device events in btmon
+hcitool -i "$DEVICE" inq --length=1 --num=0 >/dev/null 2>&1 &
+INQUIRY_PID=$!
+
+# Run for the specified timeout
+sleep "$TIMEOUT"
+
+# Clean up
+kill $INQUIRY_PID 2>/dev/null || true
+wait $INQUIRY_PID 2>/dev/null || true
+
+echo "Fallback discovery completed"
+exit 0 
