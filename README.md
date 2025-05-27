@@ -134,3 +134,7 @@ export LC_ALL="en_US.UTF-8"
 
 This issue and solution brought up by [llazzaro](https://github.com/llazzaro)
 [here](https://github.com/pwnieexpress/blue_hydra/issues/65).
+
+## Additional Edits and Work
+
+Leveraging Cursor to Help Address Underlying Ruby Limitations via Docker Container
