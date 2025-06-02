@@ -22,6 +22,7 @@ $:.unshift(File.dirname(__FILE__))
 class BluezNotReadyError < StandardError; end
 class FailedThreadError < StandardError; end
 class BtmonExitedError < StandardError; end
+class DiscoveryDisabledError < StandardError; end
 
 # Primary
 module BlueHydra

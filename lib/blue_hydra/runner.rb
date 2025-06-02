@@ -386,7 +386,18 @@ module BlueHydra
 
     def bluetoothdDbusError(bluetoothd_errors)
       BlueHydra.logger.info("Bluetoothd errors, attempting to recover...")
+      BlueHydra.logger.debug("DEBUG: bluetoothdDbusError called with errors: #{bluetoothd_errors}")
       bluetoothd_errors += 1
+      
+      # CIRCUIT BREAKER: If we've had too many bluetoothd errors, disable discovery
+      if bluetoothd_errors >= 5
+        BlueHydra.logger.warn("Too many consecutive bluetoothd errors (#{bluetoothd_errors}) - disabling discovery")
+        BlueHydra.logger.info("Switching to passive-only mode - btmon data collection will continue")
+        BlueHydra.logger.info("Discovery thread disabled due to repeated D-Bus/bluetoothd failures")
+        # Exit the discovery loop by raising a specific exception
+        raise DiscoveryDisabledError, "Too many bluetoothd errors - discovery disabled"
+      end
+      
       begin
         if bluetoothd_errors == 1
           if ::File.executable?(`which rc-service 2> /dev/null`.chomp)
@@ -636,15 +647,43 @@ module BlueHydra
               # do a discovery
               self.scanner_status[:test_discovery] = Time.now.to_i unless BlueHydra.daemon_mode
               discovery_errors = BlueHydra::Command.execute3(discovery_command,discovery_timeout)[:stderr]
+              
+              # DEBUG: Always log when discovery command completes
+              BlueHydra.logger.debug("Discovery command completed. Errors: #{discovery_errors.inspect}")
+              
               if discovery_errors
+                # DEBUG: Log the exact error text to understand why patterns aren't matching
+                BlueHydra.logger.debug("Discovery error text: #{discovery_errors.inspect}")
+                BlueHydra.logger.debug("Discovery error length: #{discovery_errors.length}")
+                
                 if discovery_errors =~ /org.bluez.Error.NotReady/
+                  BlueHydra.logger.debug("MATCHED: org.bluez.Error.NotReady")
                   raise BluezNotReadyError
                 elsif discovery_errors =~ /D-Bus error.*FileNotFound.*system_bus_socket/i
+                  BlueHydra.logger.debug("MATCHED: D-Bus system bus not available")
                   # D-Bus system bus not available - disable discovery for this session
                   BlueHydra.logger.warn("D-Bus system bus not available - disabling discovery thread")
                   BlueHydra.logger.info("Continuing in passive-only mode - btmon data collection active")
                   break # Exit discovery loop, btmon will continue
+                elsif discovery_errors =~ /D-Bus error.*Launch helper exited with unknown return code/i
+                  BlueHydra.logger.debug("MATCHED: D-Bus launch helper failed")
+                  # D-Bus launch helper failure - common in containerized environments
+                  BlueHydra.logger.warn("D-Bus launch helper failed - disabling discovery in containerized environment")
+                  BlueHydra.logger.info("Continuing in passive-only mode - btmon data collection active")
+                  break # Exit discovery loop, btmon will continue
+                elsif discovery_errors =~ /Failed to find adapter.*No Bluetooth adapters found/i
+                  BlueHydra.logger.debug("MATCHED: Failed to find adapter")
+                  # Adapter enumeration failure via D-Bus - disable discovery but continue btmon
+                  BlueHydra.logger.warn("D-Bus adapter enumeration failed - disabling discovery thread")
+                  BlueHydra.logger.info("Continuing in passive-only mode - btmon data collection active")
+                  break # Exit discovery loop, btmon will continue
+                elsif discovery_errors =~ /KeyboardInterrupt/
+                  BlueHydra.logger.debug("MATCHED: KeyboardInterrupt")
+                  # Sometimes the interrupt gets passed to test-discovery so assume it was meant for us
+                  BlueHydra.logger.info("BlueHydra Killed! Exiting... SIGINT")
+                  exit
                 elsif discovery_errors =~ /dbus.exceptions.DBusException/i || discovery_errors =~ /D-Bus error/i
+                  BlueHydra.logger.debug("MATCHED: General D-Bus error")
                   # This happens when bluetoothd isn't running or otherwise broken off the dbus
                   # systemd
                   #  dbus.exceptions.DBusException: org.freedesktop.systemd1.NoSuchUnit: Unit dbus-org.bluez.service not found.
@@ -654,11 +693,8 @@ module BlueHydra
                   #  dbus.exceptions.DBusException: org.freedesktop.DBus.Error.ServiceUnknown: The name :1.[0-9]{3} was not provided by any .service files
                   #  dbus.exceptions.DBusException: org.freedesktop.DBus.Error.NameHasNoOwner: Could not get owner of name 'org.bluez': no such name
                   bluetoothd_errors = bluetoothdDbusError(bluetoothd_errors)
-                elsif discovery_errors =~ /KeyboardInterrupt/
-                  # Sometimes the interrupt gets passed to test-discovery so assume it was meant for us
-                  BlueHydra.logger.info("BlueHydra Killed! Exiting... SIGINT")
-                  exit
                 else
+                  BlueHydra.logger.debug("NO MATCH - going to else clause")
                   BlueHydra.logger.error("Error with test-discovery script..")
                   discovery_errors.split("\n").each do |ln|
                     BlueHydra.logger.error(ln)
@@ -668,6 +704,11 @@ module BlueHydra
 
               bluez_errors = 0
 
+            rescue DiscoveryDisabledError => e
+              BlueHydra.logger.warn("Discovery disabled: #{e.message}")
+              BlueHydra.logger.info("Discovery thread exiting - continuing in passive-only mode")
+              BlueHydra.logger.info("btmon data collection will continue normally")
+              break # Exit the discovery loop completely
             rescue BluezNotReadyError
               BlueHydra.logger.info("Bluez reports not ready, attempting to recover...")
               bluez_errors += 1
@@ -694,6 +735,10 @@ module BlueHydra
                 })
                 exit 1
               end
+            rescue DiscoveryDisabledError => e
+              # Re-raise to ensure it bubbles up and exits the discovery thread completely
+              BlueHydra.logger.warn("Discovery disabled (outer catch): #{e.message}")
+              raise e
             rescue => e
               BlueHydra.logger.error("Discovery loop crashed: #{e.message}")
               e.backtrace.each do |x|
@@ -710,6 +755,10 @@ module BlueHydra
             end
           end
 
+        rescue DiscoveryDisabledError => e
+          BlueHydra.logger.warn("Discovery disabled (thread level): #{e.message}")
+          BlueHydra.logger.info("Discovery thread terminated - passive-only mode active")
+          # Exit the thread completely - no restart
         rescue => e
           BlueHydra.logger.error("Discovery thread #{e.message}")
           e.backtrace.each do |x|

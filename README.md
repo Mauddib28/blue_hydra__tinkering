@@ -138,3 +138,54 @@ This issue and solution brought up by [llazzaro](https://github.com/llazzaro)
 ## Additional Edits and Work
 
 Leveraging Cursor to Help Address Underlying Ruby Limitations via Docker Container
+
+## Ruby Dependencies and Installation
+
+### Current Setup (DataMapper - Legacy)
+
+This codebase currently uses DataMapper ORM which was deprecated in 2012. For immediate compatibility:
+
+1. **Install Ruby 2.7.8** (last version fully compatible with DataMapper):
+   ```bash
+   # Using rbenv
+   rbenv install 2.7.8
+   rbenv local 2.7.8
+   
+   # Or using rvm
+   rvm install 2.7.8
+   rvm use 2.7.8
+   ```
+
+2. **Install Legacy Dependencies**:
+   ```bash
+   gem install bundler:2.1.2
+   bundle install
+   ```
+
+3. **Host OS Requirements**:
+   ```bash
+   # Ubuntu/Debian
+   sudo apt-get install build-essential libsqlite3-dev ruby-dev
+   
+   # RHEL/CentOS
+   sudo yum install gcc gcc-c++ sqlite-devel ruby-devel
+   ```
+
+### Modernization Roadmap (Recommended)
+
+The codebase should be migrated to modern Ruby libraries:
+
+1. **Replace DataMapper** with [Sequel](https://sequel.jeremyevans.net/) (lightweight, modern ORM)
+2. **Update to Ruby 3.2+** for better performance and security
+3. **Replace deprecated gems** with actively maintained alternatives
+
+**DataMapper → Sequel Migration Priority:**
+- `dm-core` → `sequel`
+- `dm-sqlite-adapter` → `sequel[sqlite3]` 
+- `dm-migrations` → `sequel/extensions/migration`
+- `dm-timestamps` → Built-in Sequel plugins
+- `dm-validations` → Built-in Sequel validation
+
+### Docker Environment (Recommended)
+
+For production use, the containerized environment already handles these dependencies correctly. Running Blue Hydra in the provided Docker container avoids host OS Ruby compatibility issues entirely.
