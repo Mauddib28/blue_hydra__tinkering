@@ -1,0 +1,360 @@
+# Blue Hydra Specific Docker Container
+# Purpose: Full production deployment with monitoring, backup, and supervision
+# Version: Production v2.0
+
+FROM ruby:2.7.8-bullseye
+
+# Set environment variables for production
+ENV DEBIAN_FRONTEND=noninteractive
+ENV TZ=UTC
+ENV LC_ALL=C.UTF-8
+ENV LANG=C.UTF-8
+ENV BTOSINT_ENV=production
+
+# Install base dependencies and production tools
+RUN apt-get update && apt-get install -y \
+    # Core Blue Hydra dependencies
+    ruby \
+    ruby-dev \
+    ruby-bundler \
+    build-essential \
+    libssl-dev \
+    libreadline-dev \
+    zlib1g-dev \
+    libsqlite3-dev \
+    sqlite3 \
+    bluez \
+    bluez-tools \
+    libbluetooth-dev \
+    \
+    # Python and analysis tools
+    python3 \
+    python3-pip \
+    python3-dev \
+    python3-bluez \
+    python3-dbus \
+    python3-gi \
+    python3-gi-cairo \
+    gir1.2-glib-2.0 \
+    \
+    # D-Bus and system tools
+    dbus \
+    dbus-x11 \
+    \
+    # Production utilities
+    cron \
+    logrotate \
+    rsync \
+    htop \
+    iotop \
+    tmux \
+    \
+    # Development and debugging tools
+    git \
+    sudo \
+    vim \
+    curl \
+    wget \
+    ubertooth \
+    usbutils \
+    procps \
+    \
+    # Cleanup
+    && rm -rf /var/lib/apt/lists/*
+
+# Install Python dependencies for monitoring and analytics
+RUN python3 -m pip install --no-cache-dir \
+    # Core analysis libraries
+    pandas \
+    numpy \
+    matplotlib \
+    seaborn \
+    plotly \
+    requests \
+    pyyaml \
+    flask \
+    \
+    # Monitoring and system tools
+    psutil \
+    PyGObject \
+    \
+    # Production utilities
+    schedule \
+    watchdog \
+    cryptography
+
+# Verify Ruby installation
+RUN ruby --version
+
+# Create production user with proper permissions
+RUN useradd -m -s /bin/bash btosint && \
+    usermod -aG sudo btosint && \
+    echo 'btosint ALL=(ALL) NOPASSWD:ALL' >> /etc/sudoers
+
+# Set working directory and copy project
+WORKDIR /opt/btosint
+COPY . .
+
+# Create directory structure for production
+RUN mkdir -p \
+    /opt/btosint/logs \
+    /opt/btosint/backups \
+    /opt/btosint/monitoring \
+    /opt/btosint/supervision \
+    /opt/btosint/analytics \
+    /opt/btosint/config \
+    /opt/btosint/data \
+    /tmp/btosint
+
+# Fix ownership and permissions
+RUN chown -R btosint:btosint /opt/btosint && \
+    find /opt/btosint -name "*.sh" -type f -exec chmod +x {} \; && \
+    find /opt/btosint -name "*.py" -type f -exec chmod +x {} \;
+
+# Switch to btosint user for Ruby setup
+USER btosint
+WORKDIR /opt/btosint/blue_hydra
+
+# Install Ruby dependencies
+RUN bundle install
+
+# Apply Ruby patches and configuration
+RUN if [ -f "/var/lib/gems/*/gems/data_objects-*/lib/data_objects/pooling.rb" ]; then \
+        sudo sed -i 's/Fixnum/Integer/g' /var/lib/gems/*/gems/data_objects-*/lib/data_objects/pooling.rb; \
+    fi
+
+# CRITICAL: Disable 14-day deletion for indefinite retention
+RUN sudo sed -i '/Device\.where.*created_at.*days\.ago.*destroy_all/s/^/# DISABLED FOR INDEFINITE RETENTION: /' \
+    /opt/btosint/blue_hydra/lib/blue_hydra/device.rb || true
+
+RUN sudo sed -i '/rssi_values\.where.*created_at.*hour\.ago.*destroy_all/s/^/# DISABLED FOR INDEFINITE RETENTION: /' \
+    /opt/btosint/blue_hydra/lib/blue_hydra/device.rb || true
+
+# Switch back to root for system configuration
+USER root
+
+# Setup log rotation
+RUN echo '/opt/btosint/logs/*.log {\n\
+    daily\n\
+    rotate 30\n\
+    compress\n\
+    delaycompress\n\
+    missingok\n\
+    notifempty\n\
+    create 644 btosint btosint\n\
+    postrotate\n\
+        systemctl reload rsyslog > /dev/null 2>&1 || true\n\
+    endscript\n\
+}' > /etc/logrotate.d/btosint
+
+# Setup cron jobs for production tasks
+RUN echo '# BTOSINT Production Cron Jobs\n\
+# Hourly backup\n\
+0 * * * * btosint /usr/bin/python3 /opt/btosint/backup/backup_manager.py backup --type hourly\n\
+# Daily backup and cleanup\n\
+0 2 * * * btosint /usr/bin/python3 /opt/btosint/backup/backup_manager.py backup --type daily && /usr/bin/python3 /opt/btosint/backup/backup_manager.py cleanup\n\
+# Weekly backup\n\
+0 3 * * 0 btosint /usr/bin/python3 /opt/btosint/backup/backup_manager.py backup --type weekly\n\
+# Monthly backup\n\
+0 4 1 * * btosint /usr/bin/python3 /opt/btosint/backup/backup_manager.py backup --type monthly\n\
+# Log rotation\n\
+0 1 * * * root /usr/sbin/logrotate /etc/logrotate.d/btosint\n\
+' > /etc/cron.d/btosint
+
+# Create production startup script with all services and dependency fixes
+RUN echo '#!/bin/bash\n\
+set -e\n\
+\n\
+echo "=== BTOSINT Production Startup ==="\n\
+\n\
+# CRITICAL: Install missing dependencies that Blue Hydra requires\n\
+echo "Installing critical dependencies..."\n\
+apt-get update -qq && apt-get install -qq -y usbutils procps dbus > /dev/null 2>&1 || echo "Dependencies already installed"\n\
+\n\
+# Start D-Bus system service (required for Blue Hydra discovery)\n\
+echo "Starting D-Bus system bus..."\n\
+if [ ! -f /run/dbus/system_bus_socket ]; then\n\
+    dbus-daemon --system --fork || echo "Warning: D-Bus startup failed"\nelse\n\
+    echo "D-Bus already running"\n\
+fi\n\
+\n\
+# Setup Bluetooth adapter\n\
+echo "Configuring Bluetooth adapter..."\n\
+hciconfig hci0 up 2>/dev/null || echo "Warning: Bluetooth adapter setup may require host privileges"\n\
+hciconfig hci0 piscan 2>/dev/null || echo "Warning: Bluetooth scan mode setup may require host privileges"\n\
+\n\
+# Start cron for scheduled tasks\n\
+echo "Starting cron daemon..."\n\
+cron\n\
+\n\
+# Change to btosint user\n\
+cd /opt/btosint\n\
+\n\
+# Start monitoring in background\n\
+echo "Starting health monitor..."\n\
+sudo -u btosint python3 /opt/btosint/monitoring/health_monitor.py &\n\
+MONITOR_PID=$!\n\
+\n\
+# Start core dump management\n\
+echo "Starting core dump manager..."\n\
+sudo -u btosint python3 /opt/btosint/monitoring/core_dump_manager.py monitor &\n\
+COREDUMP_PID=$!\n\
+\n\
+# Start process supervisor\n\
+echo "Starting process supervisor..."\n\
+sudo -u btosint python3 /opt/btosint/supervision/process_supervisor.py monitor &\n\
+SUPERVISOR_PID=$!\n\
+\n\
+# Trap signals for graceful shutdown\n\
+trap '\''echo "Shutting down..."; kill $MONITOR_PID $COREDUMP_PID $SUPERVISOR_PID 2>/dev/null; exit 0'\'' SIGTERM SIGINT\n\
+\n\
+echo "=== BTOSINT Production Services Started ==="\n\
+echo "Health Monitor PID: $MONITOR_PID"\n\
+echo "Core Dump Manager PID: $COREDUMP_PID"\n\
+echo "Process Supervisor PID: $SUPERVISOR_PID"\n\
+echo "=== Waiting for shutdown signal ==="\n\
+\n\
+# Wait for shutdown\n\
+wait\n\
+' > /opt/btosint/start-production.sh && \
+    chmod +x /opt/btosint/start-production.sh
+
+# Create health check script
+RUN echo '#!/bin/bash\n\
+# Health check for production container\n\
+\n\
+# Check if Blue Hydra process is running\n\
+if pgrep -f "blue_hydra" > /dev/null; then\n\
+    echo "Blue Hydra: RUNNING"\n\
+    HEALTH_SCORE=1\n\
+else\n\
+    echo "Blue Hydra: NOT RUNNING"\n\
+    HEALTH_SCORE=0\n\
+fi\n\
+\n\
+# Check database accessibility\n\
+if sqlite3 /opt/btosint/blue_hydra/blue_hydra.db "SELECT COUNT(*) FROM blue_hydra_devices;" > /dev/null 2>&1; then\n\
+    echo "Database: ACCESSIBLE"\n\
+    HEALTH_SCORE=$((HEALTH_SCORE + 1))\n\
+else\n\
+    echo "Database: INACCESSIBLE"\n\
+fi\n\
+\n\
+# Check monitoring services\n\
+if pgrep -f "health_monitor" > /dev/null; then\n\
+    echo "Health Monitor: RUNNING"\n\
+    HEALTH_SCORE=$((HEALTH_SCORE + 1))\n\
+else\n\
+    echo "Health Monitor: NOT RUNNING"\n\
+fi\n\
+\n\
+# Exit with appropriate code\n\
+if [ $HEALTH_SCORE -ge 2 ]; then\n\
+    echo "Overall Health: GOOD ($HEALTH_SCORE/3)"\n\
+    exit 0\n\
+else\n\
+    echo "Overall Health: POOR ($HEALTH_SCORE/3)"\n\
+    exit 1\n\
+fi\n\
+' > /opt/btosint/health-check.sh && \
+    chmod +x /opt/btosint/health-check.sh
+
+# Set final ownership
+RUN chown -R btosint:btosint /opt/btosint
+
+# Set environment variables for production
+ENV BTOSINT_HOME=/opt/btosint
+ENV PATH="${PATH}:/opt/btosint/blue_hydra/bin:/opt/btosint/monitoring:/opt/btosint/supervision:/opt/btosint/backup"
+
+# Expose ports
+EXPOSE 1124 5000
+
+# Volumes for persistent data
+VOLUME ["/opt/btosint/blue_hydra", "/opt/btosint/backups", "/opt/btosint/logs"]
+
+# Production startup command
+CMD ["/opt/btosint/start-hardware-test.sh"]
+
+# Enhanced health check for production
+HEALTHCHECK --interval=60s --timeout=30s --start-period=60s --retries=3 \
+    CMD /opt/btosint/health-check.sh
+
+# Metadata
+LABEL maintainer="BTOSINT Team" \
+      version="production-v2.0" \
+      description="BTOSINT Production Container with Monitoring and Supervision" \
+      features="monitoring,backup,supervision,analytics" \
+      bluetooth.required="true" \
+      security.privileged="required" 
+# Create hardware test startup script with enhanced bluetoothd D-Bus fix
+RUN cat > /opt/btosint/start-hardware-test.sh << 'HWTEST_EOF'
+#!/bin/bash
+set -e
+
+echo "=== BTOSINT Hardware Test Startup with Bluetooth D-Bus Fix ==="
+
+# Install missing dependencies
+echo "Installing critical dependencies..."
+apt-get update -qq && apt-get install -qq -y usbutils procps dbus > /dev/null 2>&1 || echo "Dependencies already installed"
+
+# Create machine-id if missing (required for D-Bus)
+if [ ! -f /etc/machine-id ]; then
+    echo "Creating machine-id for D-Bus..."
+    dbus-uuidgen > /etc/machine-id
+fi
+
+# Start D-Bus system service
+echo "Starting D-Bus system bus..."
+if [ ! -f /run/dbus/system_bus_socket ]; then
+    dbus-daemon --system --fork
+    sleep 2
+else
+    echo "D-Bus already running"
+fi
+
+# Start bluetoothd service (CRITICAL FIX for bluetoothctl)
+echo "Starting bluetoothd service..."
+if ! pgrep bluetoothd > /dev/null; then
+    /usr/libexec/bluetooth/bluetoothd --nodetach &
+    BLUETOOTHD_PID=$!
+    sleep 3
+    
+    # Verify D-Bus connection
+    if dbus-send --system --print-reply --dest=org.bluez / org.freedesktop.DBus.Introspectable.Introspect > /dev/null 2>&1; then
+        echo "✅ SUCCESS: bluetoothd connected to D-Bus"
+    else
+        echo "⚠️  WARNING: bluetoothd D-Bus connection failed"
+    fi
+else
+    echo "bluetoothd already running"
+fi
+
+# Setup Bluetooth adapter
+echo "Configuring Bluetooth adapter..."
+hciconfig hci0 up 2>/dev/null || echo "⚠️  Warning: Bluetooth adapter setup requires privileged container"
+hciconfig hci0 piscan 2>/dev/null || echo "⚠️  Warning: Bluetooth scan mode setup requires privileged container"
+
+# Test bluetoothctl functionality
+echo "Testing bluetoothctl functionality..."
+timeout 5 bluetoothctl list 2>/dev/null || echo "⚠️  bluetoothctl test completed"
+
+cd /opt/btosint
+
+echo "=== Hardware Test Container Ready ==="
+echo "🔧 Available commands:"
+echo "  - bluetoothctl                    # Test Bluetooth control"
+echo "  - hciconfig                       # Check Bluetooth adapter"
+echo "  - cd blue_hydra && ./bin/blue_hydra # Start Blue Hydra"
+echo "  - python3 blueHydra_examiner.py  # Analyze database"
+
+# Start interactive shell or run provided command
+if [ $# -eq 0 ]; then
+    echo "Starting interactive shell..."
+    exec /bin/bash
+else
+    echo "Executing command: $@"
+    exec "$@"
+fi
+HWTEST_EOF
+
+RUN chmod +x /opt/btosint/start-hardware-test.sh
