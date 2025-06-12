@@ -20,111 +20,121 @@ module BlueHydra
       # # log used btmon output for review if requested
       if BlueHydra.config["btmon_log"]
         @log_file = if Dir.exist? ('/var/log/blue_hydra')
-                        File.open("/var/log/blue_hydra/btmon_#{Time.now.to_i}.log.gz",'w+')
+                        File.open("/var/log/blue_hydra/btmon_#{Time.now.to_i}.log.gz",'wb')
                       else
-                        File.open("btmon_#{Time.now.to_i}.log.gz",'w+')
+                        File.open("btmon_#{Time.now.to_i}.log.gz",'wb')
                       end
         @log_writer = Zlib::GzipWriter.wrap(@log_file)
       end
       # # log raw btmon output for review if requested
       if BlueHydra.config["btmon_rawlog"]
         @rawlog_file = if Dir.exist?('/var/log/blue_hydra')
-                         File.open("/var/log/blue_hydra/btmon_raw_#{Time.now.to_i}.log.gz",'w+')
+                         File.open("/var/log/blue_hydra/btmon_raw_#{Time.now.to_i}.log.gz",'wb')
                        else
-                         File.open("btmon_raw_#{Time.now.to_i}.log.gz",'w+')
+                         File.open("btmon_raw_#{Time.now.to_i}.log.gz",'wb')
                        end
         @rawlog_writer = Zlib::GzipWriter.wrap(@rawlog_file)
       end
 
       # initialize itself calls the method that spanws the PTY which runs the
       # command
-      begin
-        spawn
-      ensure
-        @log_writer.close if @log_writer
-        @rawlog_writer.close if @rawlog_writer
-      end
+      spawn
     end
 
     # spawn a PTY to run @command
     def spawn
-      PTY.spawn(@command) do |stdout, stdin, pid|
+      begin
+        PTY.spawn(@command) do |stdout, stdin, pid|
 
-        # lines of output will be stacked up here until a message is complete
-        # and pushed into @parse_queue
-        buffer = []
+          # lines of output will be stacked up here until a message is complete
+          # and pushed into @parse_queue
+          buffer = []
 
-        begin
-          # handle the streaming output line by line
-          stdout.each do |line|
+          begin
+            # handle the streaming output line by line
+            stdout.each do |line|
+              # Force encoding to binary to handle non-UTF-8 characters from btmon
+              line = line.force_encoding('ASCII-8BIT')
 
-            # log used btmon output for review if we are in debug mode
-            if BlueHydra.config["btmon_rawlog"] && !BlueHydra.config["file"]
-              @rawlog_writer.puts(line.chomp)
-            end
-
-            # strip out color codes
-            known_colors = [
-              "\e[0;30m", "\e[1;30m",
-              "\e[0;31m", "\e[1;31m",
-              "\e[0;32m", "\e[1;32m",
-              "\e[0;33m", "\e[1;33m",
-              "\e[0;34m", "\e[1;34m",
-              "\e[0;35m", "\e[1;35m",
-              "\e[0;36m", "\e[1;36m",
-              "\e[0;37m", "\e[1;37m",
-              "\e[0m",
-            ]
-
-            begin
-              known_colors.each do |c|
-                line = line.gsub(c, "")
-              end
-            rescue ArgumentError
-              BlueHydra.logger.warn("Non UTF-8 encoding in line: #{line.chomp}")
-              next
-            end
-
-            # Messages are indented under a header as follows
-            #
-            #   Message A
-            #     Data A1
-            #     Data A2
-            #   Message B
-            #     Data B1
-            #       Data B1a
-            #     Data B2
-            #
-            # If the line starts with whitespace we are still in a nested
-            # message otherwise we hit a new message and should empy the buffer
-            #
-            # \s == whitespace
-            # \S == non whitespace
-            #
-            # When we get a line that starts with non-whitespace we are dealing
-            # with a new message starting
-            if line =~ /^\S/
-
-              # if we have nothing in the buffer its our first message of the
-              # run so we dont need to do anything but if we have a non-zero
-              # sized buffer we push the contents of the buffer into the
-              # @parse_queue
-              if buffer.size > 0
-                enqueue(buffer)
+              # log used btmon output for review if we are in debug mode
+              if BlueHydra.config["btmon_rawlog"] && !BlueHydra.config["file"]
+                # Write binary data directly
+                @rawlog_writer.write(line.chomp + "\n")
               end
 
-              # reset the buffer
-              buffer = []
-            end
+              # strip out color codes
+              known_colors = [
+                "\e[0;30m", "\e[1;30m",
+                "\e[0;31m", "\e[1;31m",
+                "\e[0;32m", "\e[1;32m",
+                "\e[0;33m", "\e[1;33m",
+                "\e[0;34m", "\e[1;34m",
+                "\e[0;35m", "\e[1;35m",
+                "\e[0;36m", "\e[1;36m",
+                "\e[0;37m", "\e[1;37m",
+                "\e[0m",
+              ]
 
-            buffer << line
+              begin
+                known_colors.each do |c|
+                  line = line.gsub(c, "")
+                end
+              rescue ArgumentError
+                BlueHydra.logger.warn("Non UTF-8 encoding in line: #{line.chomp.inspect}")
+                next
+              end
+
+              # Messages are indented under a header as follows
+              #
+              #   Message A
+              #     Data A1
+              #     Data A2
+              #   Message B
+              #     Data B1
+              #       Data B1a
+              #     Data B2
+              #
+              # If the line starts with whitespace we are still in a nested
+              # message otherwise we hit a new message and should empy the buffer
+              #
+              # \s == whitespace
+              # \S == non whitespace
+              #
+              # When we get a line that starts with non-whitespace we are dealing
+              # with a new message starting
+              if line =~ /^\S/
+
+                # if we have nothing in the buffer its our first message of the
+                # run so we dont need to do anything but if we have a non-zero
+                # sized buffer we push the contents of the buffer into the
+                # @parse_queue
+                if buffer.size > 0
+                  enqueue(buffer)
+                end
+
+                # reset the buffer
+                buffer = []
+              end
+
+              buffer << line
+            end
+          rescue Errno::EIO
+            # File has completed or command has crashed, either way flush last
+            # chunks to buffer
+            enqueue(buffer)
+
+            raise BtmonExitedError
           end
-        rescue Errno::EIO
-          # File has completed or command has crashed, either way flush last
-          # chunks to buffer
-          enqueue(buffer)
-
-          raise BtmonExitedError
+        end
+      ensure
+        # Close the GzipWriter objects properly to avoid the zlib finalizer warnings
+        if @log_writer
+          @log_writer.close rescue nil
+          @log_file.close rescue nil
+        end
+        if @rawlog_writer
+          @rawlog_writer.close rescue nil
+          @rawlog_file.close rescue nil
         end
       end
     end
@@ -170,7 +180,8 @@ module BlueHydra
       # log used btmon output for review
       if BlueHydra.config["btmon_log"] && !BlueHydra.config["file"] && !BlueHydra.config["btmon_rawlog"]
         buffer.each do |line|
-          @log_writer.puts(line.chomp)
+          # Write binary data directly
+          @log_writer.write(line.force_encoding('ASCII-8BIT').chomp + "\n")
         end
       end
 

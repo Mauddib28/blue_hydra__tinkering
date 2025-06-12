@@ -7,67 +7,43 @@ Provides find_adapter functionality needed by test-discovery script
 
 import dbus
 
-def find_adapter(device_id=None):
-    """
-    Find and return a BlueZ adapter object
-    
-    Args:
-        device_id: Optional device ID (e.g., 'hci0'). If None, returns first adapter.
-        
-    Returns:
-        dbus.Interface: BlueZ adapter interface
-        
-    Raises:
-        RuntimeError: If no adapter found or BlueZ not available
-    """
-    try:
-        bus = dbus.SystemBus()
-        
-        # Get BlueZ object manager
-        manager = dbus.Interface(
-            bus.get_object("org.bluez", "/"),
-            "org.freedesktop.DBus.ObjectManager"
-        )
-        
-        objects = manager.GetManagedObjects()
-        
-        # Find adapters
-        adapters = []
-        for path, interfaces in objects.items():
-            if "org.bluez.Adapter1" in interfaces:
-                adapters.append(path)
-        
-        if not adapters:
-            raise RuntimeError("No Bluetooth adapters found")
-        
-        # If specific device requested, find it
-        if device_id:
-            target_path = f"/org/bluez/{device_id}"
-            if target_path in adapters:
-                adapter_path = target_path
-            else:
-                raise RuntimeError(f"Adapter {device_id} not found")
-        else:
-            # Use first adapter
-            adapter_path = adapters[0]
-        
-        # Return adapter interface
-        adapter = dbus.Interface(
-            bus.get_object("org.bluez", adapter_path),
-            "org.bluez.Adapter1"
-        )
-        
-        return adapter
-        
-    except dbus.exceptions.DBusException as e:
-        if "org.freedesktop.DBus.Error.ServiceUnknown" in str(e):
-            raise RuntimeError("BlueZ service not available - bluetoothd may not be running")
-        elif "org.freedesktop.DBus.Error.NameHasNoOwner" in str(e):
-            raise RuntimeError("BlueZ service not accessible - check bluetoothd status")
-        else:
-            raise RuntimeError(f"D-Bus error: {e}")
-    except Exception as e:
-        raise RuntimeError(f"Failed to find adapter: {e}")
+SERVICE_NAME = "org.bluez"
+ADAPTER_INTERFACE = SERVICE_NAME + ".Adapter1"
+DEVICE_INTERFACE = SERVICE_NAME + ".Device1"
+
+def get_managed_objects():
+    bus = dbus.SystemBus()
+    manager = dbus.Interface(bus.get_object(SERVICE_NAME, "/"),
+                             "org.freedesktop.DBus.ObjectManager")
+    return manager.GetManagedObjects()
+
+def find_adapter(pattern=None):
+    return find_adapter_in_objects(get_managed_objects(), pattern)
+
+def find_adapter_in_objects(objects, pattern=None):
+    bus = dbus.SystemBus()
+    for path, ifaces in objects.items():
+        adapter = ifaces.get(ADAPTER_INTERFACE)
+        if adapter is None:
+            continue
+        if not pattern or pattern == adapter["Address"] or path.endswith(pattern):
+            obj = bus.get_object(SERVICE_NAME, path)
+            return dbus.Interface(obj, ADAPTER_INTERFACE)
+    raise Exception("Bluetooth adapter not found")
+
+def find_device(device_address, adapter_pattern=None):
+    return find_device_in_objects(get_managed_objects(), device_address, adapter_pattern)
+
+def find_device_in_objects(objects, device_address, adapter_pattern=None):
+    bus = dbus.SystemBus()
+    for path, ifaces in objects.items():
+        device = ifaces.get(DEVICE_INTERFACE)
+        if device is None:
+            continue
+        if device["Address"] == device_address:
+            obj = bus.get_object(SERVICE_NAME, path)
+            return dbus.Interface(obj, DEVICE_INTERFACE)
+    raise Exception("Bluetooth device not found")
 
 def get_adapter_path(device_id=None):
     """
