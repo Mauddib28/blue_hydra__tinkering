@@ -17,23 +17,21 @@ module BlueHydra
       @command = command
       @parse_queue = parse_queue
 
-      # # log used btmon output for review if requested
+      # # log used btmon output for review if requested (using plain files to avoid encoding issues)
       if BlueHydra.config["btmon_log"]
         @log_file = if Dir.exist? ('/var/log/blue_hydra')
-                        File.open("/var/log/blue_hydra/btmon_#{Time.now.to_i}.log.gz",'wb')
+                        File.open("/var/log/blue_hydra/btmon_#{Time.now.to_i}.log",'wb')
                       else
-                        File.open("btmon_#{Time.now.to_i}.log.gz",'wb')
+                        File.open("btmon_#{Time.now.to_i}.log",'wb')
                       end
-        @log_writer = Zlib::GzipWriter.wrap(@log_file)
       end
       # # log raw btmon output for review if requested
       if BlueHydra.config["btmon_rawlog"]
         @rawlog_file = if Dir.exist?('/var/log/blue_hydra')
-                         File.open("/var/log/blue_hydra/btmon_raw_#{Time.now.to_i}.log.gz",'wb')
+                         File.open("/var/log/blue_hydra/btmon_raw_#{Time.now.to_i}.log",'wb')
                        else
-                         File.open("btmon_raw_#{Time.now.to_i}.log.gz",'wb')
+                         File.open("btmon_raw_#{Time.now.to_i}.log",'wb')
                        end
-        @rawlog_writer = Zlib::GzipWriter.wrap(@rawlog_file)
       end
 
       # initialize itself calls the method that spanws the PTY which runs the
@@ -58,8 +56,8 @@ module BlueHydra
 
               # log used btmon output for review if we are in debug mode
               if BlueHydra.config["btmon_rawlog"] && !BlueHydra.config["file"]
-                # Write binary data directly
-                @rawlog_writer.write(line.chomp + "\n")
+                @rawlog_file.write(line)
+                @rawlog_file.flush
               end
 
               # strip out color codes
@@ -127,15 +125,9 @@ module BlueHydra
           end
         end
       ensure
-        # Close the GzipWriter objects properly to avoid the zlib finalizer warnings
-        if @log_writer
-          @log_writer.close rescue nil
-          @log_file.close rescue nil
-        end
-        if @rawlog_writer
-          @rawlog_writer.close rescue nil
-          @rawlog_file.close rescue nil
-        end
+        # Close files properly
+        @log_file.close rescue nil if @log_file
+        @rawlog_file.close rescue nil if @rawlog_file
       end
     end
 
@@ -180,13 +172,13 @@ module BlueHydra
       # log used btmon output for review
       if BlueHydra.config["btmon_log"] && !BlueHydra.config["file"] && !BlueHydra.config["btmon_rawlog"]
         buffer.each do |line|
-          # Write binary data directly
-          @log_writer.write(line.force_encoding('ASCII-8BIT').chomp + "\n")
+          @log_file.write(line)
         end
+        @log_file.flush
       end
 
       # unless this is a filtered message enqueue the buffer for realz.
       @parse_queue.push(buffer)
     end
   end
-end
+end 
