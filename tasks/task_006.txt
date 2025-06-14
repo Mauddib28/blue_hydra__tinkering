@@ -1,0 +1,61 @@
+# Task ID: 6
+# Title: Fix Ruby 3.x Compatibility Issues
+# Status: done
+# Dependencies: 2
+# Priority: high
+# Description: Update codebase to be fully compatible with Ruby 3.2+
+# Details:
+1. Replace Fixnum references with Integer
+2. Update string encoding handling
+3. Fix keyword argument deprecations
+4. Update thread-safe patterns
+5. Remove deprecated Ruby 2.x syntax
+6. Update gem dependencies for Ruby 3.x
+
+# Test Strategy:
+- Run full test suite on Ruby 3.2
+- Check for deprecation warnings
+- Verify encoding handling
+
+# Subtasks:
+## 1. Find and Replace Fixnum References [done]
+### Dependencies: None
+### Description: Replace all Fixnum references with Integer throughout the codebase
+### Details:
+1. Search for all Fixnum references in the codebase
+2. Replace Fixnum with Integer
+3. Check for any Bignum references and replace with Integer
+4. Update any type checking code that explicitly checks for Fixnum
+5. Verify no breaking changes in numeric operations
+
+## 2. Fix String Encoding Issues [done]
+### Dependencies: 6.1
+### Description: Update string encoding handling for Ruby 3.x compatibility
+### Details:
+1. Set default encoding to UTF-8 where needed
+2. Fix any frozen string literal issues
+3. Add # frozen_string_literal: true to Ruby files
+4. Update string concatenation patterns
+5. Fix any string mutation on frozen strings
+
+## 3. Update Keyword Arguments [done]
+### Dependencies: 6.2
+### Description: Fix keyword argument deprecations for Ruby 3.x
+### Details:
+1. Find methods using old-style keyword arguments
+2. Update to use ** for keyword argument forwarding
+3. Fix positional vs keyword argument separation
+4. Update method signatures to use keyword: syntax
+5. Test all modified methods
+
+## 4. Update Gems and Run Full Test Suite [done]
+### Dependencies: 6.3
+### Description: Update all gem dependencies for Ruby 3.x and verify with tests
+### Details:
+1. Update Gemfile for Ruby 3.x compatible versions
+2. Update datamapper gems if possible or note for replacement
+3. Run bundle update
+4. Execute full test suite on Ruby 3.2
+5. Fix any remaining deprecation warnings
+6. Document any gems that need replacement
+

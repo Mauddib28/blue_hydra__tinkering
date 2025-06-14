@@ -8,6 +8,9 @@ Version = '1.9.21-git'
 # add ../lib/ to load path 
 $:.unshift(File.dirname(File.expand_path('../../lib/blue_hydra.rb',__FILE__)))
 
+# Apply Ruby 3.x compatibility patches before loading any gems
+require 'blue_hydra/data_objects_patch'
+
 # require for option parsing
 require 'optparse'
 

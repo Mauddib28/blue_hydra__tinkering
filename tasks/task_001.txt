@@ -1,0 +1,18 @@
+# Task ID: 1
+# Title: Analyze DataMapper Usage Patterns
+# Status: done
+# Dependencies: None
+# Priority: high
+# Description: Conduct a comprehensive analysis of how DataMapper is used throughout the Blue Hydra codebase to understand migration requirements
+# Details:
+1. Identify all DataMapper model definitions in lib/blue_hydra/
+2. Document all query patterns and methods used
+3. List DataMapper-specific features (validations, timestamps, migrations)
+4. Analyze database schema structure
+5. Document any custom DataMapper plugins or extensions
+6. Create mapping document for DataMapper to Sequel equivalents
+
+# Test Strategy:
+- Verify all models are documented
+- Ensure query patterns are captured
+- Test that schema extraction is complete

@@ -1,0 +1,26 @@
+version: '3.7'
+
+services:
+  blue_hydra:
+    build: .
+    image: blue_hydra:ruby3
+    container_name: blue_hydra
+    privileged: true  # Required for Bluetooth hardware access
+    network_mode: host  # Required for Bluetooth
+    volumes:
+      - ./blue_hydra.yml:/opt/blue_hydra/blue_hydra.yml
+      - ./logs:/opt/blue_hydra/logs
+      - ./blue_hydra.db:/opt/blue_hydra/blue_hydra.db  # Persist database
+      - /var/run/dbus:/var/run/dbus:ro  # Share host D-Bus if available
+    devices:
+      - /dev/bus/usb:/dev/bus/usb  # USB devices for Bluetooth dongles
+    cap_add:
+      - NET_ADMIN  # For network operations
+      - NET_RAW    # For raw socket access
+      - SYS_MODULE # For loading kernel modules if needed
+    environment:
+      - TZ=UTC
+      - DBUS_SYSTEM_BUS_ADDRESS=unix:path=/var/run/dbus/system_bus_socket
+    restart: unless-stopped  # Re-enable restart policy
+    stdin_open: true
+    tty: true 

@@ -1,0 +1,525 @@
+{
+  "tasks": [
+    {
+      "id": 1,
+      "title": "Analyze DataMapper Usage Patterns",
+      "description": "Conduct a comprehensive analysis of how DataMapper is used throughout the Blue Hydra codebase to understand migration requirements",
+      "details": "1. Identify all DataMapper model definitions in lib/blue_hydra/\n2. Document all query patterns and methods used\n3. List DataMapper-specific features (validations, timestamps, migrations)\n4. Analyze database schema structure\n5. Document any custom DataMapper plugins or extensions\n6. Create mapping document for DataMapper to Sequel equivalents",
+      "testStrategy": "- Verify all models are documented\n- Ensure query patterns are captured\n- Test that schema extraction is complete",
+      "status": "done",
+      "dependencies": [],
+      "priority": "high",
+      "subtasks": []
+    },
+    {
+      "id": 2,
+      "title": "Create Comprehensive Test Suite",
+      "description": "Develop a complete test suite for existing Blue Hydra functionality to ensure no regressions during migration",
+      "details": "1. Set up RSpec testing framework\n2. Create unit tests for all models\n3. Add tests for Bluetooth discovery functionality\n4. Test database operations and queries\n5. Create integration tests for btmon parsing\n6. Add tests for thread management and concurrency\n7. Implement test fixtures and factories",
+      "testStrategy": "- Achieve 80%+ code coverage\n- All critical paths tested\n- Mock Bluetooth hardware for CI/CD",
+      "status": "done",
+      "dependencies": [],
+      "priority": "high",
+      "subtasks": []
+    },
+    {
+      "id": 3,
+      "title": "Document Current Database Schema",
+      "description": "Extract and document the complete database schema from DataMapper models",
+      "details": "1. Extract schema from DataMapper auto_upgrade\n2. Document all tables, columns, and types\n3. Identify indexes and constraints\n4. Document relationships between models\n5. Create ER diagram of database structure\n6. Export sample data for migration testing",
+      "testStrategy": "- Verify schema matches production databases\n- Test schema extraction scripts\n- Validate documentation completeness",
+      "status": "done",
+      "dependencies": [
+        1
+      ],
+      "priority": "high",
+      "subtasks": []
+    },
+    {
+      "id": 4,
+      "title": "Set Up Sequel ORM Environment",
+      "description": "Configure Sequel ORM as the replacement for DataMapper with all necessary plugins",
+      "details": "1. Add Sequel gem to Gemfile\n2. Configure Sequel connection settings\n3. Set up Sequel plugins (timestamps, validations)\n4. Create Sequel database configuration\n5. Implement Sequel migration framework\n6. Set up Sequel model base class",
+      "testStrategy": "- Test Sequel connection to SQLite\n- Verify plugin functionality\n- Ensure migration system works",
+      "status": "done",
+      "dependencies": [
+        3
+      ],
+      "priority": "high",
+      "subtasks": []
+    },
+    {
+      "id": 5,
+      "title": "Migrate Device Model to Sequel",
+      "description": "Convert the main Device model from DataMapper to Sequel ORM",
+      "details": "1. Create Sequel version of Device model\n2. Migrate all validations to Sequel format\n3. Convert timestamps to Sequel plugin\n4. Update all Device queries to Sequel syntax\n5. Migrate device-specific methods\n6. Ensure backward compatibility with existing data",
+      "testStrategy": "- Test all CRUD operations\n- Verify data integrity\n- Benchmark performance vs DataMapper",
+      "status": "done",
+      "dependencies": [
+        4
+      ],
+      "priority": "high",
+      "subtasks": [
+        {
+          "id": 1,
+          "title": "Create Sequel Device Model Structure",
+          "description": "Create the basic Sequel Device model class with all 40+ properties matching the DataMapper schema",
+          "details": "1. Create lib/blue_hydra/models/device.rb\n2. Inherit from BlueHydra::Models::SequelBase\n3. Set table name to :blue_hydra_devices\n4. Define all properties matching DataMapper model\n5. Set up JSON array fields for RSSI and service UUIDs\n6. Set up JSON object fields for feature bitmaps",
+          "status": "done",
+          "dependencies": [],
+          "parentTaskId": 5
+        },
+        {
+          "id": 2,
+          "title": "Implement Model Validations",
+          "description": "Add all validations from DataMapper model to Sequel model",
+          "details": "1. Add MAC address format validation\n2. Implement address normalization (uppercase)\n3. Add presence validations where needed\n4. Validate status values (online/offline)\n5. Ensure timestamp validations\n6. Test all validation scenarios",
+          "status": "done",
+          "dependencies": [
+            "5.1"
+          ],
+          "parentTaskId": 5
+        },
+        {
+          "id": 3,
+          "title": "Implement Model Callbacks",
+          "description": "Port all DataMapper callbacks to Sequel hooks",
+          "details": "1. Implement before_save callbacks:\n   - set_uuid (generate UUID if not present)\n   - set_uap_lap (extract from MAC address)\n   - set_vendor (Louis lookup)\n   - normalize_address (uppercase)\n2. Implement after_save callbacks:\n   - sync_to_pulse (if enabled)\n3. Ensure callback order matches DataMapper",
+          "status": "done",
+          "dependencies": [
+            "5.1"
+          ],
+          "parentTaskId": 5
+        },
+        {
+          "id": 4,
+          "title": "Implement update_or_create_from_result",
+          "description": "Port the critical update_or_create_from_result class method to Sequel",
+          "details": "1. Implement device lookup by address\n2. Add fallback lookup by UAP/LAP\n3. Handle iBeacon trinity matching\n4. Port attribute merging logic\n5. Maintain RSSI array limits (100 items)\n6. Ensure proper JSON encoding\n7. Handle special cases (random addresses, etc)",
+          "status": "done",
+          "dependencies": [
+            "5.1",
+            "5.2",
+            "5.3"
+          ],
+          "parentTaskId": 5
+        },
+        {
+          "id": 5,
+          "title": "Implement mark_old_devices_offline",
+          "description": "Port the mark_old_devices_offline class method for device timeout handling",
+          "details": "1. Implement classic device timeout (15 minutes)\n2. Implement LE device timeout (3 minutes)\n3. Handle startup parameter for immediate marking\n4. Use Sequel dataset methods for efficient updates\n5. Maintain same timeout logic as DataMapper version\n6. Test with various device types",
+          "status": "done",
+          "dependencies": [
+            "5.1"
+          ],
+          "parentTaskId": 5
+        },
+        {
+          "id": 6,
+          "title": "Create Comprehensive Model Tests",
+          "description": "Build test suite for Sequel Device model matching DataMapper tests",
+          "details": "1. Create spec/models/sequel_device_spec.rb\n2. Test all properties and methods\n3. Verify JSON field handling\n4. Test validations and callbacks\n5. Test update_or_create_from_result scenarios\n6. Verify thread safety\n7. Compare behavior with DataMapper model",
+          "status": "done",
+          "dependencies": [
+            "5.1",
+            "5.2",
+            "5.3",
+            "5.4",
+            "5.5"
+          ],
+          "parentTaskId": 5
+        }
+      ]
+    },
+    {
+      "id": 6,
+      "title": "Fix Ruby 3.x Compatibility Issues",
+      "description": "Update codebase to be fully compatible with Ruby 3.2+",
+      "details": "1. Replace Fixnum references with Integer\n2. Update string encoding handling\n3. Fix keyword argument deprecations\n4. Update thread-safe patterns\n5. Remove deprecated Ruby 2.x syntax\n6. Update gem dependencies for Ruby 3.x",
+      "testStrategy": "- Run full test suite on Ruby 3.2\n- Check for deprecation warnings\n- Verify encoding handling",
+      "status": "done",
+      "dependencies": [
+        2
+      ],
+      "priority": "high",
+      "subtasks": [
+        {
+          "id": 1,
+          "title": "Find and Replace Fixnum References",
+          "description": "Replace all Fixnum references with Integer throughout the codebase",
+          "details": "1. Search for all Fixnum references in the codebase\n2. Replace Fixnum with Integer\n3. Check for any Bignum references and replace with Integer\n4. Update any type checking code that explicitly checks for Fixnum\n5. Verify no breaking changes in numeric operations",
+          "status": "done",
+          "dependencies": [],
+          "parentTaskId": 6
+        },
+        {
+          "id": 2,
+          "title": "Fix String Encoding Issues",
+          "description": "Update string encoding handling for Ruby 3.x compatibility",
+          "details": "1. Set default encoding to UTF-8 where needed\n2. Fix any frozen string literal issues\n3. Add # frozen_string_literal: true to Ruby files\n4. Update string concatenation patterns\n5. Fix any string mutation on frozen strings",
+          "status": "done",
+          "dependencies": [
+            "6.1"
+          ],
+          "parentTaskId": 6
+        },
+        {
+          "id": 3,
+          "title": "Update Keyword Arguments",
+          "description": "Fix keyword argument deprecations for Ruby 3.x",
+          "details": "1. Find methods using old-style keyword arguments\n2. Update to use ** for keyword argument forwarding\n3. Fix positional vs keyword argument separation\n4. Update method signatures to use keyword: syntax\n5. Test all modified methods",
+          "status": "done",
+          "dependencies": [
+            "6.2"
+          ],
+          "parentTaskId": 6
+        },
+        {
+          "id": 4,
+          "title": "Update Gems and Run Full Test Suite",
+          "description": "Update all gem dependencies for Ruby 3.x and verify with tests",
+          "details": "1. Update Gemfile for Ruby 3.x compatible versions\n2. Update datamapper gems if possible or note for replacement\n3. Run bundle update\n4. Execute full test suite on Ruby 3.2\n5. Fix any remaining deprecation warnings\n6. Document any gems that need replacement",
+          "status": "done",
+          "dependencies": [
+            "6.3"
+          ],
+          "parentTaskId": 6
+        }
+      ]
+    },
+    {
+      "id": 7,
+      "title": "Modernize D-Bus Integration",
+      "description": "Update D-Bus integration for Bluetooth control to use modern patterns",
+      "details": "1. Review current D-Bus usage in discovery\n2. Update to modern D-Bus Ruby bindings\n3. Improve error handling for D-Bus failures\n4. Add D-Bus connection monitoring\n5. Implement reconnection logic\n6. Update for bluez 5.x API changes",
+      "testStrategy": "- Test with mock D-Bus service\n- Verify Bluetooth operations\n- Test error recovery",
+      "status": "done",
+      "dependencies": [
+        6
+      ],
+      "priority": "medium",
+      "subtasks": [
+        {
+          "id": 1,
+          "title": "Add ruby-dbus gem dependency",
+          "description": "Add ruby-dbus gem to Gemfile for native Ruby D-Bus integration",
+          "details": "Update Gemfile to include ruby-dbus gem, ensuring compatibility with Ruby 3.2.2. Run bundle install to update dependencies.",
+          "status": "done",
+          "dependencies": [],
+          "parentTaskId": 7
+        },
+        {
+          "id": 2,
+          "title": "Create D-Bus connection manager",
+          "description": "Implement DBusManager class for connection management and health checks",
+          "details": "Create lib/blue_hydra/dbus_manager.rb with connection management, health monitoring, automatic reconnection logic, and graceful error handling. Should support both system and session bus connections.",
+          "status": "done",
+          "dependencies": [
+            "7.1"
+          ],
+          "parentTaskId": 7
+        },
+        {
+          "id": 3,
+          "title": "Implement BlueZ adapter interface",
+          "description": "Create Ruby wrapper for BlueZ D-Bus adapter operations",
+          "details": "Create lib/blue_hydra/bluez_adapter.rb implementing org.bluez.Adapter1 interface. Include methods for StartDiscovery, StopDiscovery, GetProperties, and device enumeration. Ensure BlueZ 5.x compatibility.",
+          "status": "done",
+          "dependencies": [
+            "7.2"
+          ],
+          "parentTaskId": 7
+        },
+        {
+          "id": 4,
+          "title": "Update discovery thread for Ruby D-Bus",
+          "description": "Refactor discovery thread to use native Ruby D-Bus instead of Python scripts",
+          "details": "Modify start_discovery_thread in runner.rb to use DBusManager and BluezAdapter classes. Remove dependency on test-discovery Python script. Maintain existing fallback behavior for environments without D-Bus.",
+          "status": "done",
+          "dependencies": [
+            "7.3"
+          ],
+          "parentTaskId": 7
+        },
+        {
+          "id": 5,
+          "title": "Create comprehensive D-Bus tests",
+          "description": "Add test coverage for D-Bus operations and error scenarios",
+          "details": "Create spec/dbus_manager_spec.rb and spec/bluez_adapter_spec.rb with tests for connection handling, adapter operations, error recovery, and mock D-Bus service interactions. Use ruby-dbus test helpers.",
+          "status": "done",
+          "dependencies": [
+            "7.4"
+          ],
+          "parentTaskId": 7
+        },
+        {
+          "id": 6,
+          "title": "Document D-Bus modernization",
+          "description": "Create documentation for the new D-Bus integration",
+          "details": "Create docs/dbus-modernization.md documenting the new Ruby D-Bus integration, API reference, error handling patterns, and migration notes from Python scripts. Update README.md with new requirements.",
+          "status": "done",
+          "dependencies": [
+            "7.5"
+          ],
+          "parentTaskId": 7
+        }
+      ]
+    },
+    {
+      "id": 8,
+      "title": "Create Database Migration Scripts",
+      "description": "Develop scripts to migrate existing DataMapper databases to Sequel format",
+      "details": "1. Create backup mechanism for existing databases\n2. Write schema migration script\n3. Implement data transformation logic\n4. Add validation for migrated data\n5. Create rollback procedures\n6. Test with production-size databases",
+      "testStrategy": "- Test with various database sizes\n- Verify zero data loss\n- Benchmark migration performance",
+      "status": "done",
+      "dependencies": [
+        5
+      ],
+      "priority": "high",
+      "subtasks": []
+    },
+    {
+      "id": 9,
+      "title": "Ensure Interactive and Daemonized Mode Support",
+      "description": "Verify and update Blue Hydra to run properly in both interactive and daemonized modes with Ruby 3.x",
+      "details": "1. Test interactive mode functionality with Ruby 3.x\n2. Verify daemonized mode (-d flag) works correctly\n3. Test --rssi-api flag for RSSI output verification\n4. Test --mohawk-api flag for JSON output at /dev/shm/blue_hydra.json\n5. Verify blue_hydra.log captures proper runtime output\n6. Update Docker configuration as secondary priority\n7. Ensure signal handling works in both modes\n8. Test graceful shutdown procedures",
+      "testStrategy": "- Run in interactive mode and verify UI output\n- Run in daemon mode and check blue_hydra.log\n- Test --rssi-api on port 1124\n- Verify --mohawk-api JSON output\n- Test signal handling (SIGINT, SIGHUP)",
+      "status": "done",
+      "dependencies": [
+        6
+      ],
+      "priority": "medium",
+      "subtasks": [
+        {
+          "id": 1,
+          "title": "Test and fix interactive mode UI",
+          "description": "Verify CliUserInterface works properly with Ruby 3.x including string encoding and UI updates",
+          "details": "Check CliUserInterface class for Ruby 3.x compatibility, test device table updates, verify real-time UI updates work correctly, fix any string encoding issues in display",
+          "status": "done",
+          "dependencies": [],
+          "parentTaskId": 9
+        },
+        {
+          "id": 2,
+          "title": "Verify daemon mode operation",
+          "description": "Test daemonized mode (-d flag) functionality including logging and background operation",
+          "details": "Test -d flag operation, verify no console output in daemon mode, ensure proper logging to blue_hydra.log, check PID file creation/cleanup, verify background operation works correctly",
+          "status": "done",
+          "dependencies": [
+            "9.1"
+          ],
+          "parentTaskId": 9
+        },
+        {
+          "id": 3,
+          "title": "Test RSSI API functionality",
+          "description": "Verify --rssi-api flag opens port 1124 and provides RSSI data correctly",
+          "details": "Test --rssi-api flag activation, verify TCP server starts on port 1124, test RSSI data format and delivery, check signal_spitter thread operation, ensure proper JSON formatting of RSSI data",
+          "status": "done",
+          "dependencies": [
+            "9.2"
+          ],
+          "parentTaskId": 9
+        },
+        {
+          "id": 4,
+          "title": "Test Mohawk API functionality",
+          "description": "Verify --mohawk-api flag creates JSON output at /dev/shm/blue_hydra.json",
+          "details": "Test --mohawk-api flag activation, verify JSON file creation at /dev/shm/blue_hydra.json, check JSON format and content updates, ensure file permissions are correct, test real-time updates to JSON file",
+          "status": "done",
+          "dependencies": [
+            "9.3"
+          ],
+          "parentTaskId": 9
+        },
+        {
+          "id": 5,
+          "title": "Test signal handling and graceful shutdown",
+          "description": "Verify SIGINT and SIGHUP handling work properly in both modes",
+          "details": "Test SIGINT handling for graceful shutdown, verify SIGHUP handling for log rotation, ensure threads are properly terminated, check PID file cleanup, test data persistence during shutdown",
+          "status": "done",
+          "dependencies": [
+            "9.4"
+          ],
+          "parentTaskId": 9
+        },
+        {
+          "id": 6,
+          "title": "Run and update integration tests",
+          "description": "Execute existing operation mode tests and fix any failures",
+          "details": "Run spec/integration/operation_modes_spec.rb, fix any test failures due to Ruby 3.x changes, add additional tests if needed, ensure all modes are properly covered",
+          "status": "done",
+          "dependencies": [
+            "9.5"
+          ],
+          "parentTaskId": 9
+        }
+      ]
+    },
+    {
+      "id": 10,
+      "title": "Improve Thread Safety",
+      "description": "Enhance thread safety and concurrency handling for Ruby 3.x",
+      "details": "1. Audit all thread usage patterns\n2. Replace thread-unsafe operations\n3. Add proper mutex/synchronization\n4. Improve thread error handling\n5. Add thread monitoring\n6. Implement graceful shutdown",
+      "testStrategy": "- Stress test with concurrent operations\n- Test thread lifecycle management\n- Verify no race conditions",
+      "status": "done",
+      "dependencies": [
+        6
+      ],
+      "priority": "high",
+      "subtasks": []
+    },
+    {
+      "id": 11,
+      "title": "Create Migration Documentation",
+      "description": "Write comprehensive documentation for users migrating from the legacy version",
+      "details": "1. Document breaking changes\n2. Create step-by-step migration guide\n3. Document new dependency requirements\n4. Add troubleshooting section\n5. Include rollback procedures\n6. Create FAQ for common issues",
+      "testStrategy": "- Review with test users\n- Validate all procedures work\n- Test documentation accuracy",
+      "status": "done",
+      "dependencies": [
+        8
+      ],
+      "priority": "medium",
+      "subtasks": [
+        {
+          "id": 1,
+          "title": "Document breaking changes and compatibility issues",
+          "description": "Create comprehensive list of all breaking changes between legacy and modernized versions",
+          "details": "Document Ruby version requirements, DataMapper to Sequel migration impacts, D-Bus integration changes, gem dependency updates, API changes, configuration file changes",
+          "status": "done",
+          "dependencies": [],
+          "parentTaskId": 11
+        },
+        {
+          "id": 2,
+          "title": "Create step-by-step migration guide",
+          "description": "Write detailed procedures for migrating from legacy to modernized version",
+          "details": "Include pre-migration checks, backup procedures, Ruby version upgrade steps, dependency installation, database migration steps, configuration updates, verification procedures",
+          "status": "done",
+          "dependencies": [
+            "11.1"
+          ],
+          "parentTaskId": 11
+        },
+        {
+          "id": 3,
+          "title": "Write troubleshooting guide and rollback procedures",
+          "description": "Document common migration issues and how to resolve them, plus rollback steps",
+          "details": "Cover DataMapper compatibility errors, D-Bus connection issues, database migration failures, dependency conflicts, permission issues, rollback database to legacy format, restore configuration files",
+          "status": "done",
+          "dependencies": [
+            "11.2"
+          ],
+          "parentTaskId": 11
+        },
+        {
+          "id": 4,
+          "title": "Create migration FAQ and quick reference",
+          "description": "Compile frequently asked questions and create a quick reference guide",
+          "details": "Address Ruby version compatibility, performance differences, feature parity, configuration changes, database format changes, API compatibility, create migration checklist, quick command reference",
+          "status": "done",
+          "dependencies": [
+            "11.3"
+          ],
+          "parentTaskId": 11
+        },
+        {
+          "id": 5,
+          "title": "Compile and review complete migration documentation",
+          "description": "Assemble all migration docs into cohesive guide and review for completeness",
+          "details": "Create MIGRATION.md master document, ensure all procedures tested, review with fresh eyes, add table of contents, verify all code examples work, check for completeness",
+          "status": "done",
+          "dependencies": [
+            "11.4"
+          ],
+          "parentTaskId": 11
+        }
+      ]
+    },
+    {
+      "id": 12,
+      "title": "Performance Benchmarking",
+      "description": "Create performance benchmarks comparing legacy and modernized versions",
+      "details": "1. Define performance metrics\n2. Create benchmark suite\n3. Test device discovery rates\n4. Measure memory usage\n5. Compare database performance\n6. Generate comparison report",
+      "testStrategy": "- Run benchmarks on identical hardware\n- Test with various workloads\n- Document all test conditions",
+      "status": "done",
+      "dependencies": [
+        5,
+        10
+      ],
+      "priority": "medium",
+      "subtasks": [
+        {
+          "id": 1,
+          "title": "Define performance metrics and create benchmark framework",
+          "description": "Set up benchmark infrastructure and define metrics to measure",
+          "details": "Create benchmark runner class, define metrics: discovery rate, memory usage, CPU usage, database query performance, thread count, response times. Set up consistent test environment",
+          "status": "done",
+          "dependencies": [],
+          "parentTaskId": 12
+        },
+        {
+          "id": 2,
+          "title": "Benchmark device discovery performance",
+          "description": "Test and compare discovery rates between legacy and modern versions",
+          "details": "Measure devices discovered per minute, time to first discovery, discovery thread performance, compare Python subprocess vs Ruby D-Bus, test with various device densities",
+          "status": "done",
+          "dependencies": [
+            "12.1"
+          ],
+          "parentTaskId": 12
+        },
+        {
+          "id": 3,
+          "title": "Benchmark database operations",
+          "description": "Compare DataMapper vs Sequel performance for common operations",
+          "details": "Test device creation/update speed, bulk operations performance, query performance for various filters, index usage efficiency, concurrent access performance",
+          "status": "done",
+          "dependencies": [
+            "12.1"
+          ],
+          "parentTaskId": 12
+        },
+        {
+          "id": 4,
+          "title": "Benchmark system resource usage",
+          "description": "Measure and compare memory, CPU, and thread usage",
+          "details": "Monitor memory usage over time, track CPU utilization patterns, count active threads, measure startup time and resource allocation, test under various load conditions",
+          "status": "done",
+          "dependencies": [
+            "12.1"
+          ],
+          "parentTaskId": 12
+        },
+        {
+          "id": 5,
+          "title": "Generate performance comparison report",
+          "description": "Compile all benchmark results into comprehensive comparison report",
+          "details": "Create visual charts for key metrics, summarize performance improvements/regressions, document test methodology, provide recommendations, create executive summary",
+          "status": "done",
+          "dependencies": [
+            "12.2",
+            "12.3",
+            "12.4"
+          ],
+          "parentTaskId": 12
+        }
+      ]
+    },
+    {
+      "id": 13,
+      "title": "Set Up CI/CD Pipeline",
+      "description": "Implement continuous integration and deployment pipeline for the modernized codebase",
+      "details": "1. Configure GitHub Actions workflow\n2. Set up automated testing\n3. Add code quality checks\n4. Implement Docker image building\n5. Add security scanning\n6. Create release automation",
+      "testStrategy": "- Test all CI/CD stages\n- Verify automated builds work\n- Test deployment procedures",
+      "status": "cancelled",
+      "dependencies": [
+        2,
+        9
+      ],
+      "priority": "low",
+      "subtasks": []
+    }
+  ]
+}

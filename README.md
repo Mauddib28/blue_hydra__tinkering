@@ -4,9 +4,32 @@ BlueHydra is a Bluetooth device discovery service built on top of the `bluez`
 library. BlueHydra makes use of ubertooth where available and attempts to track
 both classic and low energy (LE) bluetooth devices over time. 
 
-## Installation
+## Quick Start with Docker (Recommended)
 
-The files in this repository can be run directly.
+The easiest way to run Blue Hydra is using Docker, which provides Ruby 3.x without affecting your system:
+
+```bash
+# Build and run with Docker
+sudo ./run-blue-hydra.sh
+
+# Or manually with Docker Compose
+sudo docker-compose up
+
+# Run in background
+sudo docker-compose up -d
+
+# View logs
+sudo docker-compose logs -f
+
+# Stop
+sudo docker-compose down
+```
+
+The Docker container includes Ruby 3.2, all dependencies, and proper Bluetooth support.
+
+## Installation (System Ruby)
+
+⚠️ **Note**: Blue Hydra requires Ruby 3.x. Ubuntu 20.04 ships with Ruby 2.7 which is incompatible. Use Docker (above) or see [upgrade instructions](docs/upgrade-system-ruby.md).
 
 Ensure that the following packages are installed: 
 
@@ -18,29 +41,25 @@ python3-dbus
 ubertooth # where applicable
 sqlite3
 libsqlite3-dev
+libdbus-1-dev
+libdbus-glib-1-dev
 ```
 
 If your chosen distro is still on bluez 4 please choose a more up to date distro.  Bluez 5 was released in 2012 and is required.
 
 On Debian-based systems, these packages can be installed with the following command line:
 
-```sudo apt-get install bluez bluez-test-scripts python3-bluez python3-dbus libsqlite3-dev ubertooth```
+```sudo apt-get install bluez bluez-test-scripts python3-bluez python3-dbus libsqlite3-dev libdbus-1-dev libdbus-glib-1-dev ubertooth```
 
-To install the needed gems it may be helpful (but not required) to use bundler:
+To install the needed gems:
 
 ```
-sudo apt-get install ruby-dev bundler
-(from inside the blue_hydra directory)
+# Install Ruby gems (requires Ruby 3.x)
+sudo gem install bundler
 bundle install
 ```
 
-In addition to the Bluetooth packages listed above you will need to have Ruby
-version 2.1 or higher installed, as well as Ruby development headers for gem compilation (on
-Debian based systems, this is the `ruby-dev` package). With ruby installed add the `bundler` gem and
-then run `bundle install` inside the checkout directory. 
-
-Once all dependencies are met simply run `./bin/blue_hydra` to start discovery.
-If you experience gem inconsistency try running `bundle exec ./bin/blue_hydra` instead.
+Once all dependencies are met simply run `sudo ./bin/blue_hydra` to start discovery.
 
 There are a few flags that can be passed to this script: 
 
@@ -139,53 +158,28 @@ This issue and solution brought up by [llazzaro](https://github.com/llazzaro)
 
 Leveraging Cursor to Help Address Underlying Ruby Limitations via Docker Container
 
-## Ruby Dependencies and Installation
+## Ruby 3.x and Sequel ORM Migration
 
-### Current Setup (DataMapper - Legacy)
-
-This codebase currently uses DataMapper ORM which was deprecated in 2012. For immediate compatibility:
-
-1. **Install Ruby 2.7.8** (last version fully compatible with DataMapper):
-   ```bash
-   # Using rbenv
-   rbenv install 2.7.8
-   rbenv local 2.7.8
-   
-   # Or using rvm
-   rvm install 2.7.8
-   rvm use 2.7.8
-   ```
-
-2. **Install Legacy Dependencies**:
-   ```bash
-   gem install bundler:2.1.2
-   bundle install
-   ```
-
-3. **Host OS Requirements**:
-   ```bash
-   # Ubuntu/Debian
-   sudo apt-get install build-essential libsqlite3-dev ruby-dev
-   
-   # RHEL/CentOS
-   sudo yum install gcc gcc-c++ sqlite-devel ruby-devel
-   ```
-
-### Modernization Roadmap (Recommended)
-
-The codebase should be migrated to modern Ruby libraries:
-
-1. **Replace DataMapper** with [Sequel](https://sequel.jeremyevans.net/) (lightweight, modern ORM)
-2. **Update to Ruby 3.2+** for better performance and security
-3. **Replace deprecated gems** with actively maintained alternatives
-
-**DataMapper → Sequel Migration Priority:**
-- `dm-core` → `sequel`
-- `dm-sqlite-adapter` → `sequel[sqlite3]` 
-- `dm-migrations` → `sequel/extensions/migration`
-- `dm-timestamps` → Built-in Sequel plugins
-- `dm-validations` → Built-in Sequel validation
+This codebase has been modernized to use:
+- **Ruby 3.2+** for better performance and security
+- **Sequel ORM** replacing the deprecated DataMapper
+- **Native Ruby D-Bus** integration for improved Bluetooth discovery
 
 ### Docker Environment (Recommended)
 
-For production use, the containerized environment already handles these dependencies correctly. Running Blue Hydra in the provided Docker container avoids host OS Ruby compatibility issues entirely.
+For production use, the containerized environment handles all dependencies correctly. Running Blue Hydra in the provided Docker container avoids host OS Ruby compatibility issues entirely.
+
+```bash
+# Run with automatic Ruby detection
+sudo ./run-blue-hydra.sh
+
+# Or use Docker directly
+sudo docker-compose up
+```
+
+### Ruby D-Bus Integration
+
+Blue Hydra now supports native Ruby D-Bus integration for improved performance. The `ruby-dbus` gem is automatically used when available. To force the use of Python scripts, set `use_python_discovery: true` in `blue_hydra.yml`.
+
+## OSX
+# ... existing code ...

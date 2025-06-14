@@ -1,0 +1,138 @@
+Blue Hydra Modernization Product Requirements Document (PRD)
+============================================================
+
+OVERVIEW:
+Blue Hydra is a Bluetooth device discovery service built on top of the bluez library that tracks both classic and low energy (LE) Bluetooth devices over time. The current codebase uses deprecated Ruby libraries (DataMapper ORM, deprecated since 2012) and requires Ruby 2.7.8 for compatibility. This project aims to modernize the codebase to run on current systems while maintaining all existing functionality.
+
+CURRENT STATE:
+- Ruby Version: 2.7.8 (required for DataMapper compatibility)
+- Key Dependencies: DataMapper ORM (dm-core, dm-migrations, dm-sqlite-adapter, dm-timestamps, dm-validations)
+- System Dependencies: bluez 5+, bluez-test-scripts, python3-bluez, python3-dbus, ubertooth (optional), sqlite3
+- Database: SQLite with DataMapper ORM
+- Core Functionality: Bluetooth discovery, RSSI tracking, device persistence, optional Ubertooth integration
+
+TECHNICAL CHALLENGES:
+1. DataMapper ORM was deprecated in 2012 and has compatibility issues with Ruby 3.x
+2. The codebase patches data_objects gem for Ruby compatibility (Fixnum/Integer conversion)
+3. D-Bus integration for Bluetooth control requires system-level permissions
+4. The application requires root privileges for Bluetooth hardware access
+5. Integration with legacy Pwn Pulse reporting system
+6. Real-time Bluetooth monitoring through btmon requires careful thread management
+
+MIGRATION REQUIREMENTS:
+
+Phase 1 - Assessment and Planning:
+- Analyze current DataMapper usage patterns and database schema
+- Document all DataMapper-specific features being used
+- Identify all system-level dependencies and version requirements
+- Create comprehensive test suite for existing functionality
+- Document current API contracts and data formats
+
+Phase 2 - ORM Migration:
+- Replace DataMapper with Sequel ORM (lightweight, modern, well-maintained)
+- Migrate database schema while preserving data structure
+- Update all model definitions to use Sequel syntax
+- Implement data migration scripts for existing databases
+- Ensure backward compatibility with existing database files
+
+Phase 3 - Ruby Version Update:
+- Update codebase to Ruby 3.2+ compatibility
+- Replace deprecated Ruby patterns and syntax
+- Update all gem dependencies to current versions
+- Fix any threading issues with Ruby 3.x
+- Ensure proper encoding handling throughout
+
+Phase 4 - Dependency Modernization:
+- Update or replace deprecated system dependencies
+- Modernize D-Bus integration patterns
+- Update Bluetooth library integration
+- Improve error handling and recovery
+- Add proper dependency version constraints
+
+Phase 5 - Testing and Validation:
+- Comprehensive unit test coverage
+- Integration tests for Bluetooth functionality
+- Performance benchmarking vs original version
+- Hardware compatibility testing
+- Data migration testing with production databases
+
+Phase 6 - Documentation and Deployment:
+- Update installation documentation
+- Create migration guide for existing users
+- Document new dependency requirements
+- Update Docker configurations
+- Create automated installation scripts
+
+SPECIFIC MODERNIZATION TASKS:
+
+1. DataMapper to Sequel Migration:
+   - Replace dm-core with sequel gem
+   - Convert dm-migrations to Sequel migration system
+   - Replace dm-timestamps with Sequel timestamp plugin
+   - Convert dm-validations to Sequel validation plugin
+   - Update all model queries to Sequel syntax
+
+2. Ruby 3.x Compatibility:
+   - Fix Fixnum/Integer compatibility issues
+   - Update string encoding handling
+   - Modernize threading patterns
+   - Update deprecated syntax patterns
+   - Fix keyword argument warnings
+
+3. System Integration Updates:
+   - Modernize D-Bus integration
+   - Update bluez library integration
+   - Improve systemd service integration
+   - Add proper signal handling
+   - Improve privilege dropping after initialization
+
+4. Code Quality Improvements:
+   - Add comprehensive error handling
+   - Implement proper logging strategies
+   - Add performance monitoring
+   - Improve thread safety
+   - Add configuration validation
+
+5. Testing Infrastructure:
+   - Create unit test suite
+   - Add integration tests
+   - Implement CI/CD pipeline
+   - Add hardware emulation for testing
+   - Create test data generators
+
+SUCCESS CRITERIA:
+- Full compatibility with Ruby 3.2+
+- All existing features preserved
+- Improved performance over original
+- Comprehensive test coverage (>80%)
+- Zero data loss during migration
+- Simplified installation process
+- Better error messages and debugging
+- Maintained compatibility with existing tools
+
+DELIVERABLES:
+1. Modernized codebase compatible with current Ruby versions
+2. Automated migration scripts for existing databases
+3. Comprehensive test suite
+4. Updated documentation
+5. Docker images for easy deployment
+6. Installation automation scripts
+7. Migration guide for existing users
+8. Performance comparison report
+
+TIMELINE ESTIMATE:
+- Phase 1 (Assessment): 1 week
+- Phase 2 (ORM Migration): 2-3 weeks
+- Phase 3 (Ruby Update): 1-2 weeks
+- Phase 4 (Dependencies): 1 week
+- Phase 5 (Testing): 2 weeks
+- Phase 6 (Documentation): 1 week
+Total: 8-10 weeks for complete modernization
+
+RISK FACTORS:
+- Hardware-specific Bluetooth behavior differences
+- Undocumented DataMapper features in use
+- Legacy database compatibility requirements
+- Performance regression possibilities
+- Thread safety issues with modernization
+- D-Bus API changes between versions 

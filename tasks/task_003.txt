@@ -1,0 +1,18 @@
+# Task ID: 3
+# Title: Document Current Database Schema
+# Status: done
+# Dependencies: 1
+# Priority: high
+# Description: Extract and document the complete database schema from DataMapper models
+# Details:
+1. Extract schema from DataMapper auto_upgrade
+2. Document all tables, columns, and types
+3. Identify indexes and constraints
+4. Document relationships between models
+5. Create ER diagram of database structure
+6. Export sample data for migration testing
+
+# Test Strategy:
+- Verify schema matches production databases
+- Test schema extraction scripts
+- Validate documentation completeness

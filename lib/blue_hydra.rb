@@ -9,10 +9,16 @@ require 'yaml'
 require 'fileutils'
 require 'socket'
 
-# Gems
+# Gems - Use Sequel instead of DataMapper for Ruby 3.x compatibility
+if RUBY_VERSION >= '3.0.0'
+  require 'sequel'
+  require_relative 'blue_hydra/sequel_db'
+  require_relative 'blue_hydra/model_shim'
+else
 require 'dm-migrations'
 require 'dm-timestamps'
 require 'dm-validations'
+end
 require 'louis'
 
 # Add to Load Path
@@ -66,7 +72,8 @@ module BlueHydra
     "ui_exc_filter_prox" => [],           # exclude ui filter by prox uuid / major /minor
     "ignore_mac"         => [],           # completely ignore a mac address, both ui and db
     "signal_spitter"     => false,        # make raw signal strength api available on localhost:1124
-    "chunker_debug"      => false
+    "chunker_debug"      => false,
+    "use_python_discovery" => false       # force Python discovery instead of Ruby D-Bus
   }
 
   # Create config file with defaults if missing or load and update.
@@ -85,11 +92,11 @@ module BlueHydra
                  end
                end
                #conversions
-               new_config["ui_inc_filter_mac"].map{|mac|mac.upcase!} if new_config["ui_inc_filter_mac"]
-               new_config["ui_inc_filter_prox"].map{|prox|prox.downcase!} if new_config["ui_inc_filter_prox"]
-               new_config["ui_exc_filter_mac"].map{|emac|emac.upcase!} if new_config["ui_exc_filter_mac"]
-               new_config["ui_exc_filter_prox"].map{|eprox|eprox.downcase!} if new_config["ui_exc_filter_prox"]
-               new_config["ignore_mac"].map{|imac|imac.upcase!} if new_config["ignore_mac"]
+               new_config["ui_inc_filter_mac"] = new_config["ui_inc_filter_mac"].map(&:upcase) if new_config["ui_inc_filter_mac"]
+               new_config["ui_inc_filter_prox"] = new_config["ui_inc_filter_prox"].map(&:downcase) if new_config["ui_inc_filter_prox"]
+               new_config["ui_exc_filter_mac"] = new_config["ui_exc_filter_mac"].map(&:upcase) if new_config["ui_exc_filter_mac"]
+               new_config["ui_exc_filter_prox"] = new_config["ui_exc_filter_prox"].map(&:downcase) if new_config["ui_exc_filter_prox"]
+               new_config["ignore_mac"] = new_config["ignore_mac"].map(&:upcase) if new_config["ignore_mac"]
                #migration
                (new_config["ui_inc_filter_mode"] = new_config["ui_filter_mode"]) if new_config["ui_filter_mode"]
                new_config.reject!{|k,v| v == nil}
@@ -242,6 +249,26 @@ module BlueHydra
     @@file_api = setting
   end
 
+  # getter for mohawk api option (alias for file_api)
+  def mohawk_api
+    file_api
+  end
+
+  # setter for mohawk api option (alias for file_api)
+  def mohawk_api=(setting)
+    self.file_api = setting
+  end
+
+  # getter for rssi api option (alias for signal_spitter)
+  def rssi_api
+    signal_spitter
+  end
+
+  # setter for rssi api option (alias for signal_spitter)
+  def rssi_api=(setting)
+    self.signal_spitter = setting
+  end
+
   # getter for demo mode option
   def demo_mode
     @@demo_mode ||= false
@@ -302,18 +329,27 @@ module BlueHydra
                   :pulse=, :rssi_logger, :demo_mode, :demo_mode=,
                   :pulse_debug, :pulse_debug=, :no_db, :no_db=,
                   :signal_spitter, :signal_spitter=, :chunk_logger,
-                  :info_scan, :info_scan=, :file_api, :file_api=
+                  :info_scan, :info_scan=, :file_api, :file_api=,
+                  :mohawk_api, :mohawk_api=, :rssi_api, :rssi_api=
+
+  # Database setup constants
+  DB_DIR           = '/etc/blue_hydra'
+  DB_NAME          = 'blue_hydra.db'
+  DB_PATH          = File.join(DB_DIR, DB_NAME)
+  
+  # Define Models module to hold all model classes
+  module Models
+  end
 end
 
-# require the actual code
+# require the actual code - MOVED BEFORE MAC ENUMERATION to fix loading order
+require 'blue_hydra/model_shim'
 require 'blue_hydra/btmon_handler'
 require 'blue_hydra/parser'
 require 'blue_hydra/pulse'
 require 'blue_hydra/chunker'
 require 'blue_hydra/runner'
 require 'blue_hydra/command'
-require 'blue_hydra/device'
-require 'blue_hydra/sync_version'
 require 'blue_hydra/cli_user_interface'
 require 'blue_hydra/cli_user_interface_tracker'
 
@@ -328,11 +364,15 @@ BlueHydra::EnumLocalAddr = Proc.new do
 end
 
 begin
+  BlueHydra.logger.info("Attempting to enumerate MAC address for #{BlueHydra.config["bt_device"]}")
   BlueHydra::LOCAL_ADAPTER_ADDRESS = BlueHydra::EnumLocalAddr.call.first
-rescue
+  BlueHydra.logger.info("Successfully enumerated MAC address: #{BlueHydra::LOCAL_ADAPTER_ADDRESS}")
+rescue => e
+  BlueHydra.logger.info("MAC enumeration failed: #{e.class}: #{e.message}")
   if ENV["BLUE_HYDRA"] == "test"
     BlueHydra::LOCAL_ADAPTER_ADDRESS = "JE:NK:IN:SJ:EN:KI"
-    puts "Failed to find mac address for #{BlueHydra.config["bt_device"]}, faking for tests"
+    BlueHydra.logger.info("In test mode, using fake MAC address")
+    # puts "Failed to find mac address for #{BlueHydra.config["bt_device"]}, faking for tests"
   else
     msg = "Unable to read the mac address from #{BlueHydra.config["bt_device"]}"
     BlueHydra::Pulse.send_event("blue_hydra", {
@@ -347,12 +387,79 @@ rescue
   end
 end
 
+# Setup database using Sequel for Ruby 3.x or DataMapper for Ruby 2.x
+if RUBY_VERSION >= '3.0.0'
+  # Ruby 3.x: Use Sequel ORM
+  begin
+    # Connect to database
+    BlueHydra::SequelDB.connect!
+    
+    # Run migrations
+    BlueHydra::SequelDB.migrate!
+    
+    # Now set the database for Sequel::Model base class
+    Sequel::Model.db = BlueHydra::SequelDB.db
+    
+    # Load Sequel models
+    require 'blue_hydra/models/sequel_base'
+    require 'blue_hydra/models/sync_version'
+    require 'blue_hydra/models/device'
+    
+    # Check database integrity
+    unless BlueHydra::SequelDB.integrity_check
+      db_file = if Dir.exist?('/etc/blue_hydra/')
+                  "/etc/blue_hydra/blue_hydra.db"
+                else
+                  "blue_hydra.db"
+                end
+      BlueHydra.logger.error("#{db_file} is not valid. Backing up to #{db_file}.corrupt and recreating...")
+      BlueHydra::Pulse.send_event("blue_hydra", {
+        key:       'blue_hydra_db_corrupt',
+        title:     'Blue Hydra DB Corrupt',
+        message:   "#{db_file} is not valid. Backing up to #{db_file}.corrupt and recreating...",
+        severity:  'ERROR'
+      })
+      File.rename(db_file, "#{db_file}.corrupt")
+      BlueHydra.logger.fatal("Blue_Hydra needs to be restarted for this to take effect.")
+      puts("Blue_Hydra needs to be restarted for this to take effect.")
+      exit 1
+    end
+    
+    # Create initial sync version if needed
+    if BlueHydra::Models::SyncVersion.count == 0
+      BlueHydra::Models::SyncVersion.current  # This will create if it doesn't exist
+    end
+    
+    BlueHydra::SYNC_VERSION = BlueHydra::Models::SyncVersion.first.version
+    
+  rescue => e
+    BlueHydra.logger.error("#{e.class}: #{e.message}")
+    log_message = ""
+    e.backtrace.each do |line|
+      BlueHydra.logger.error(line)
+      log_message << line
+    end
+    BlueHydra::Pulse.send_event("blue_hydra", {
+      key:       'blue_hydra_db_error',
+      title:     'Blue Hydra Encountered DB Migration Error',
+      message:   log_message,
+      severity:  'FATAL'
+    })
+    exit 1
+  end
+  
+else
+  # Ruby 2.x: Use DataMapper (legacy)
+  require 'data_objects'
+  require 'dm-core'
+  require 'dm-sqlite-adapter'
+
 # set all String properties to have a default length of 255
 DataMapper::Property::String.length(255)
 
-DB_DIR           = '/etc/blue_hydra'
-DB_NAME          = 'blue_hydra.db'
-DB_PATH          = File.join(DB_DIR, DB_NAME)
+  # Load DataMapper models
+  require 'blue_hydra/device'
+  require 'blue_hydra/sync_version'
 
 # The database will be stored in /etc/blue_hydra/blue_hydra.db if we are installed
 # system-wide.  Otherwise it will attempt to create a sqlite db whereever the run was initiated.
@@ -361,10 +468,10 @@ DB_PATH          = File.join(DB_DIR, DB_NAME)
 # 'test' and all tests should run with an in-memory db.
 db_path = if ENV["BLUE_HYDRA"] == "test" || BlueHydra.no_db
             'sqlite::memory:?cache=shared'
-          elsif Dir.exist?(DB_DIR)
-            "sqlite:#{DB_PATH}"
+            elsif Dir.exist?(BlueHydra::DB_DIR)
+              "sqlite:#{BlueHydra::DB_PATH}"
           else
-            "sqlite:#{DB_NAME}"
+              "sqlite:#{BlueHydra::DB_NAME}"
           end
 
 # create the db file
@@ -389,16 +496,12 @@ def brains_to_floor
   BlueHydra.logger.fatal("Blue_Hydra needs to be restarted for this to take effect.")
   puts("Blue_Hydra needs to be restarted for this to take effect.")
   exit 1
-  ## I really wish this works but it doesn't reopen the file and holds the handle on the renamed file
-  #DataMapper.setup(:default, db_path)
-  #DataMapper.auto_upgrade!
 end
 
 # DB Migration and upgrade logic
 begin
   begin
     # Upgrade the db..
-    # This requires a patched data_objects to work with ruby 3.2 and higher
     DataMapper.auto_upgrade!
   rescue DataObjects::ConnectionError
     brains_to_floor
@@ -444,3 +547,7 @@ if BlueHydra::SyncVersion.count == 0
 end
 
 BlueHydra::SYNC_VERSION = BlueHydra::SyncVersion.first.version
+end
+
+# Set up model aliases to ensure backward compatibility
+BlueHydra.setup_model_aliases

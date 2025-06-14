@@ -1,0 +1,56 @@
+# Task ID: 7
+# Title: Modernize D-Bus Integration
+# Status: done
+# Dependencies: 6
+# Priority: medium
+# Description: Update D-Bus integration for Bluetooth control to use modern patterns
+# Details:
+1. Review current D-Bus usage in discovery
+2. Update to modern D-Bus Ruby bindings
+3. Improve error handling for D-Bus failures
+4. Add D-Bus connection monitoring
+5. Implement reconnection logic
+6. Update for bluez 5.x API changes
+
+# Test Strategy:
+- Test with mock D-Bus service
+- Verify Bluetooth operations
+- Test error recovery
+
+# Subtasks:
+## 1. Add ruby-dbus gem dependency [done]
+### Dependencies: None
+### Description: Add ruby-dbus gem to Gemfile for native Ruby D-Bus integration
+### Details:
+Update Gemfile to include ruby-dbus gem, ensuring compatibility with Ruby 3.2.2. Run bundle install to update dependencies.
+
+## 2. Create D-Bus connection manager [done]
+### Dependencies: 7.1
+### Description: Implement DBusManager class for connection management and health checks
+### Details:
+Create lib/blue_hydra/dbus_manager.rb with connection management, health monitoring, automatic reconnection logic, and graceful error handling. Should support both system and session bus connections.
+
+## 3. Implement BlueZ adapter interface [done]
+### Dependencies: 7.2
+### Description: Create Ruby wrapper for BlueZ D-Bus adapter operations
+### Details:
+Create lib/blue_hydra/bluez_adapter.rb implementing org.bluez.Adapter1 interface. Include methods for StartDiscovery, StopDiscovery, GetProperties, and device enumeration. Ensure BlueZ 5.x compatibility.
+
+## 4. Update discovery thread for Ruby D-Bus [done]
+### Dependencies: 7.3
+### Description: Refactor discovery thread to use native Ruby D-Bus instead of Python scripts
+### Details:
+Modify start_discovery_thread in runner.rb to use DBusManager and BluezAdapter classes. Remove dependency on test-discovery Python script. Maintain existing fallback behavior for environments without D-Bus.
+
+## 5. Create comprehensive D-Bus tests [done]
+### Dependencies: 7.4
+### Description: Add test coverage for D-Bus operations and error scenarios
+### Details:
+Create spec/dbus_manager_spec.rb and spec/bluez_adapter_spec.rb with tests for connection handling, adapter operations, error recovery, and mock D-Bus service interactions. Use ruby-dbus test helpers.
+
+## 6. Document D-Bus modernization [done]
+### Dependencies: 7.5
+### Description: Create documentation for the new D-Bus integration
+### Details:
+Create docs/dbus-modernization.md documenting the new Ruby D-Bus integration, API reference, error handling patterns, and migration notes from Python scripts. Update README.md with new requirements.
+

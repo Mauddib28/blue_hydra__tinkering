@@ -1,9 +1,20 @@
+require 'pty'
+require 'logger'
+require 'dm-migrations'
+require 'dm-timestamps'
+require 'dm-validations'
+require 'json'
+require 'blue_hydra/btmon_handler'
+require 'blue_hydra/command'
+require 'blue_hydra/runner_dbus_discovery'
+
 module BlueHydra
 
   # This class is a wrapper for all the core functionality of  Blue Hydra. It
   # is responsible for managing all the threads for device interaction, data
   # processing and, when not in daemon mode, the CLI UI thread and tracker.
   class Runner
+    include RunnerDBusDiscovery
 
     attr_accessor :command,
                   :raw_queue,
@@ -523,10 +534,30 @@ module BlueHydra
       sleep 1
     end
 
-    # thread responsible for sending interesting commands to the hci device so
+    # this will thread off and take care of bluetooth scanning so
     # that interesting things show up in the btmon ouput
     def start_discovery_thread
-      BlueHydra.logger.info("Discovery thread starting")
+      # Use Ruby D-Bus discovery if available and not explicitly disabled
+      if ENV['BLUE_HYDRA_USE_PYTHON_DISCOVERY'] != 'true' && BlueHydra.config["use_python_discovery"] != true
+        begin
+          # Try to load D-Bus gem
+          require 'dbus'
+          BlueHydra.logger.info("Using Ruby D-Bus for discovery")
+          return start_discovery_thread_dbus
+        rescue LoadError => e
+          BlueHydra.logger.warn("Ruby D-Bus not available, falling back to Python discovery: #{e.message}")
+        rescue => e
+          BlueHydra.logger.warn("Failed to initialize D-Bus discovery, falling back to Python: #{e.message}")
+        end
+      end
+      
+      # Fall back to original Python-based discovery
+      BlueHydra.logger.info("Discovery thread starting (Python script)")
+      start_discovery_thread_python
+    end
+    
+    # Original Python-based discovery thread
+    def start_discovery_thread_python
       self.discovery_thread = Thread.new do
         begin
 

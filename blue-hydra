@@ -1,0 +1,11 @@
+#!/bin/bash
+# Blue Hydra launcher - Always uses Docker with Ruby 3.2
+
+if [ "$EUID" -ne 0 ]; then 
+    echo "Error: Blue Hydra must be run as root for Bluetooth access"
+    echo "Please run: sudo ./blue-hydra"
+    exit 1
+fi
+
+echo "Starting Blue Hydra with Ruby 3.2 (Docker)..."
+docker-compose run --rm blue_hydra "$@" 

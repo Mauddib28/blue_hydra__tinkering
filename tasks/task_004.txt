@@ -1,0 +1,18 @@
+# Task ID: 4
+# Title: Set Up Sequel ORM Environment
+# Status: done
+# Dependencies: 3
+# Priority: high
+# Description: Configure Sequel ORM as the replacement for DataMapper with all necessary plugins
+# Details:
+1. Add Sequel gem to Gemfile
+2. Configure Sequel connection settings
+3. Set up Sequel plugins (timestamps, validations)
+4. Create Sequel database configuration
+5. Implement Sequel migration framework
+6. Set up Sequel model base class
+
+# Test Strategy:
+- Test Sequel connection to SQLite
+- Verify plugin functionality
+- Ensure migration system works

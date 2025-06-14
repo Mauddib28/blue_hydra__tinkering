@@ -1,0 +1,60 @@
+# Task ID: 9
+# Title: Ensure Interactive and Daemonized Mode Support
+# Status: done
+# Dependencies: 6
+# Priority: medium
+# Description: Verify and update Blue Hydra to run properly in both interactive and daemonized modes with Ruby 3.x
+# Details:
+1. Test interactive mode functionality with Ruby 3.x
+2. Verify daemonized mode (-d flag) works correctly
+3. Test --rssi-api flag for RSSI output verification
+4. Test --mohawk-api flag for JSON output at /dev/shm/blue_hydra.json
+5. Verify blue_hydra.log captures proper runtime output
+6. Update Docker configuration as secondary priority
+7. Ensure signal handling works in both modes
+8. Test graceful shutdown procedures
+
+# Test Strategy:
+- Run in interactive mode and verify UI output
+- Run in daemon mode and check blue_hydra.log
+- Test --rssi-api on port 1124
+- Verify --mohawk-api JSON output
+- Test signal handling (SIGINT, SIGHUP)
+
+# Subtasks:
+## 1. Test and fix interactive mode UI [done]
+### Dependencies: None
+### Description: Verify CliUserInterface works properly with Ruby 3.x including string encoding and UI updates
+### Details:
+Check CliUserInterface class for Ruby 3.x compatibility, test device table updates, verify real-time UI updates work correctly, fix any string encoding issues in display
+
+## 2. Verify daemon mode operation [done]
+### Dependencies: 9.1
+### Description: Test daemonized mode (-d flag) functionality including logging and background operation
+### Details:
+Test -d flag operation, verify no console output in daemon mode, ensure proper logging to blue_hydra.log, check PID file creation/cleanup, verify background operation works correctly
+
+## 3. Test RSSI API functionality [done]
+### Dependencies: 9.2
+### Description: Verify --rssi-api flag opens port 1124 and provides RSSI data correctly
+### Details:
+Test --rssi-api flag activation, verify TCP server starts on port 1124, test RSSI data format and delivery, check signal_spitter thread operation, ensure proper JSON formatting of RSSI data
+
+## 4. Test Mohawk API functionality [done]
+### Dependencies: 9.3
+### Description: Verify --mohawk-api flag creates JSON output at /dev/shm/blue_hydra.json
+### Details:
+Test --mohawk-api flag activation, verify JSON file creation at /dev/shm/blue_hydra.json, check JSON format and content updates, ensure file permissions are correct, test real-time updates to JSON file
+
+## 5. Test signal handling and graceful shutdown [done]
+### Dependencies: 9.4
+### Description: Verify SIGINT and SIGHUP handling work properly in both modes
+### Details:
+Test SIGINT handling for graceful shutdown, verify SIGHUP handling for log rotation, ensure threads are properly terminated, check PID file cleanup, test data persistence during shutdown
+
+## 6. Run and update integration tests [done]
+### Dependencies: 9.5
+### Description: Execute existing operation mode tests and fix any failures
+### Details:
+Run spec/integration/operation_modes_spec.rb, fix any test failures due to Ruby 3.x changes, add additional tests if needed, ensure all modes are properly covered
+

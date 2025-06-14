@@ -1,0 +1,90 @@
+# Task ID: 5
+# Title: Migrate Device Model to Sequel
+# Status: done
+# Dependencies: 4
+# Priority: high
+# Description: Convert the main Device model from DataMapper to Sequel ORM
+# Details:
+1. Create Sequel version of Device model
+2. Migrate all validations to Sequel format
+3. Convert timestamps to Sequel plugin
+4. Update all Device queries to Sequel syntax
+5. Migrate device-specific methods
+6. Ensure backward compatibility with existing data
+
+# Test Strategy:
+- Test all CRUD operations
+- Verify data integrity
+- Benchmark performance vs DataMapper
+
+# Subtasks:
+## 1. Create Sequel Device Model Structure [done]
+### Dependencies: None
+### Description: Create the basic Sequel Device model class with all 40+ properties matching the DataMapper schema
+### Details:
+1. Create lib/blue_hydra/models/device.rb
+2. Inherit from BlueHydra::Models::SequelBase
+3. Set table name to :blue_hydra_devices
+4. Define all properties matching DataMapper model
+5. Set up JSON array fields for RSSI and service UUIDs
+6. Set up JSON object fields for feature bitmaps
+
+## 2. Implement Model Validations [done]
+### Dependencies: 5.1
+### Description: Add all validations from DataMapper model to Sequel model
+### Details:
+1. Add MAC address format validation
+2. Implement address normalization (uppercase)
+3. Add presence validations where needed
+4. Validate status values (online/offline)
+5. Ensure timestamp validations
+6. Test all validation scenarios
+
+## 3. Implement Model Callbacks [done]
+### Dependencies: 5.1
+### Description: Port all DataMapper callbacks to Sequel hooks
+### Details:
+1. Implement before_save callbacks:
+   - set_uuid (generate UUID if not present)
+   - set_uap_lap (extract from MAC address)
+   - set_vendor (Louis lookup)
+   - normalize_address (uppercase)
+2. Implement after_save callbacks:
+   - sync_to_pulse (if enabled)
+3. Ensure callback order matches DataMapper
+
+## 4. Implement update_or_create_from_result [done]
+### Dependencies: 5.1, 5.2, 5.3
+### Description: Port the critical update_or_create_from_result class method to Sequel
+### Details:
+1. Implement device lookup by address
+2. Add fallback lookup by UAP/LAP
+3. Handle iBeacon trinity matching
+4. Port attribute merging logic
+5. Maintain RSSI array limits (100 items)
+6. Ensure proper JSON encoding
+7. Handle special cases (random addresses, etc)
+
+## 5. Implement mark_old_devices_offline [done]
+### Dependencies: 5.1
+### Description: Port the mark_old_devices_offline class method for device timeout handling
+### Details:
+1. Implement classic device timeout (15 minutes)
+2. Implement LE device timeout (3 minutes)
+3. Handle startup parameter for immediate marking
+4. Use Sequel dataset methods for efficient updates
+5. Maintain same timeout logic as DataMapper version
+6. Test with various device types
+
+## 6. Create Comprehensive Model Tests [done]
+### Dependencies: 5.1, 5.2, 5.3, 5.4, 5.5
+### Description: Build test suite for Sequel Device model matching DataMapper tests
+### Details:
+1. Create spec/models/sequel_device_spec.rb
+2. Test all properties and methods
+3. Verify JSON field handling
+4. Test validations and callbacks
+5. Test update_or_create_from_result scenarios
+6. Verify thread safety
+7. Compare behavior with DataMapper model
+
